@@ -8,3 +8,4 @@ include_directories(include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${TRT_INCL
 link_directories(${TRT_LINK_DIRECTORIES})
 
 add_subdirectory(spconv)
+add_subdirectory(voxel_encoder)
