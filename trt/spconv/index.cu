@@ -33,7 +33,7 @@ namespace kernel {
 
 template <size_t NDim, class Index> class ConvHashWriter {
  public:
-  using HashTable = detail::hash::LinearHashTable<Index, Index>;
+  using HashTable = hash::LinearHashTable<Index, Index>;
   DEVICE_INLINE
   ConvHashWriter(Ref2D<mkU<Index>>& hashOut,
                  Ref2D<mkU<Index>>& hashOutPos,
@@ -59,7 +59,7 @@ template <size_t NDim, class Index> class ConvHashWriter {
 
 template <size_t NDim, class Index> class SubMHashWriter {
  public:
-  using HashTable = detail::hash::LinearHashTable<Index, Index>;
+  using HashTable = hash::LinearHashTable<Index, Index>;
   DEVICE_INLINE
   SubMHashWriter(Ref2D<mkU<Index>>& hashOut,
                  Ref2D<mkU<Index>>& hashOutPos,

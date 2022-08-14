@@ -9,7 +9,7 @@
 
 #define NOEXCEPT noexcept
 
-namespace spconv {
+namespace voxel_encoder {
 using utils::GPU;
 using utils::io::SerializeStream;
 using utils::launch::CUDA_NUM_THREADS;
@@ -24,7 +24,7 @@ using utils::nd::Vec;
 using namespace nvinfer1;
 
 namespace kernel {
-using HashTable = detail::hash::LinearHashTable<int32_t, int32_t>;
+using HashTable = hash::LinearHashTable<int32_t, int32_t>;
 template <class T, class Hash>
 __global__ void cylinderize(Ref1D<int32_t> hashSlot,  // [numPtsIn]
                             Hash hash,
@@ -363,4 +363,4 @@ class CylinderEncoderPluginCreator : public IPluginCreator {
 
 REGISTER_TENSORRT_PLUGIN(CylinderEncoderPluginCreator);
 
-}  // namespace spconv
+}  // namespace voxel_encoder

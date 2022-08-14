@@ -2,46 +2,26 @@
 #include "macros.h"
 #include <limits>
 
-namespace spconv {
-namespace detail {
 namespace hash {
 
-template <int N> struct ubytes
-{
-};
-template <> struct ubytes<1>
-{
-  using type = uint8_t;
-};
-template <> struct ubytes<2>
-{
-  using type = uint16_t;
-};
-template <> struct ubytes<4>
-{
-  using type = uint32_t;
-};
-template <> struct ubytes<8>
-{
-  using type = uint64_t;
-};
+template <int N> struct ubytes {};
+template <> struct ubytes<1> { using type = uint8_t; };
+template <> struct ubytes<2> { using type = uint16_t; };
+template <> struct ubytes<4> { using type = uint32_t; };
+template <> struct ubytes<8> { using type = uint64_t; };
 template <class T> using uint_t = typename ubytes<sizeof(T)>::type;
-template <class T> constexpr HOST_DEVICE_INLINE uint_t<T> uint_view(T x)
-{
+template <class T> constexpr HOST_DEVICE_INLINE uint_t<T> uint_view(T x) {
   return *reinterpret_cast<uint_t<T>*>(&x);
 }
 
-template <class T> constexpr HOST_DEVICE_INLINE uint_t<T>* uint_view_ptr(T* x)
-{
+template <class T> constexpr HOST_DEVICE_INLINE uint_t<T>* uint_view_ptr(T* x) {
   return reinterpret_cast<uint_t<T>*>(x);
 }
 
 template <class K> constexpr K empty_v = std::numeric_limits<K>::max();
 
-struct Murmur3Hash4B
-{
-  template <typename K> size_t HOST_DEVICE_INLINE operator()(K key) const
-  {
+struct Murmur3Hash4B {
+  template <typename K> size_t HOST_DEVICE_INLINE operator()(K key) const {
     uint_t<K> k = uint_view(key);
     k = k ^= k >> 16;
     k *= 0x85ebca6b;
@@ -52,8 +32,7 @@ struct Murmur3Hash4B
   }
 };
 
-template <class K, class V, class HashFtor=Murmur3Hash4B> struct LinearHashTable
-{
+template <class K, class V, class HashFtor = Murmur3Hash4B> struct LinearHashTable {
  public:
   using key_type = K;
   using value_type = V;
@@ -68,9 +47,7 @@ template <class K, class V, class HashFtor=Murmur3Hash4B> struct LinearHashTable
 
  public:
   explicit LinearHashTable(key_type* key_table, value_type* value_table, size_t size)
-      : key_table_(key_table), value_table_(value_table), size_(size), hash_ftor_()
-  {
-  }
+      : key_table_(key_table), value_table_(value_table), size_(size), hash_ftor_() {}
 
   HOST_DEVICE_INLINE size_t size() const { return size_; }
 
@@ -79,8 +56,7 @@ template <class K, class V, class HashFtor=Murmur3Hash4B> struct LinearHashTable
   HOST_DEVICE_INLINE const value_type* data() const { return value_table_; }
   HOST_DEVICE_INLINE value_type* data() { return value_table_; }
 
-  HOST_DEVICE_INLINE size_t insert(const K& key, const V& value)
-  {
+  HOST_DEVICE_INLINE size_t insert(const K& key, const V& value) {
     size_t slot = hash_ftor_(key) % size_;
     uint_t<K> key_u = uint_view(key);
     for (int i = 0; i < size_; i++) {
@@ -94,8 +70,7 @@ template <class K, class V, class HashFtor=Murmur3Hash4B> struct LinearHashTable
     return empty_v<size_t>;
   }
 
-  HOST_DEVICE_INLINE bool lookup(const K& key, V& value) const
-  {
+  HOST_DEVICE_INLINE bool lookup(const K& key, V& value) const {
     size_t slot = hash_ftor_(key) % size_;
     for (int i = 0; i < size_; i++) {
       K found = key_table_[slot];
@@ -111,5 +86,3 @@ template <class K, class V, class HashFtor=Murmur3Hash4B> struct LinearHashTable
 };
 
 }  // namespace hash
-}  // namespace detail
-}  // namespace spconv

@@ -1,17 +1,16 @@
 #pragma once
-#include <initializer_list>
+#include "macros.h"
+#include <NvInfer.h>
 #include <fstream>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <vector>
-#include <NvInfer.h>
-#include "macros.h"
 
 namespace utils {
 namespace nd {
 
-template <size_t Rank, class T> struct Vec
-{
+template <size_t Rank, class T> struct Vec {
   static_assert(Rank > 0, "error");
   static constexpr size_t rank = Rank;
   using value_type = T;
@@ -30,8 +29,7 @@ template <size_t Rank, class T> struct Vec
 
 namespace indexing {
 template <size_t Rank, class Index1, class Index2>
-HOST_DEVICE_INLINE ssize_t is_valid(const Index1* const coor, const Index2* const size)
-{
+HOST_DEVICE_INLINE ssize_t is_valid(const Index1* const coor, const Index2* const size) {
 #pragma unroll
   for (ssize_t i = 0; i < Rank; ++i) {
     if (coor[i] < 0 || (coor[i] > size[i] - 1)) return false;
@@ -39,18 +37,15 @@ HOST_DEVICE_INLINE ssize_t is_valid(const Index1* const coor, const Index2* cons
   return true;
 }
 
-HOST_DEVICE_INLINE ssize_t offset_args(const ssize_t* const stride, ssize_t index)
-{
+HOST_DEVICE_INLINE ssize_t offset_args(const ssize_t* const stride, ssize_t index) {
   return index * stride[0];
 }
-template <class... Ts> HOST_DEVICE_INLINE ssize_t offset_args(const ssize_t* const stride, ssize_t index, Ts... inds)
-{
+template <class... Ts> HOST_DEVICE_INLINE ssize_t offset_args(const ssize_t* const stride, ssize_t index, Ts... inds) {
   return index * stride[0] + offset_args(stride + 1, inds...);
 }
 
 template <size_t Rank, class Index1, class Index2>
-HOST_DEVICE_INLINE ssize_t offset(const Index1* const coor, const Index2* const size)
-{
+HOST_DEVICE_INLINE ssize_t offset(const Index1* const coor, const Index2* const size) {
   ssize_t off(coor[0]);
 #pragma unroll
   for (ssize_t i = 1; i < Rank; ++i) { off = off * size[i] + coor[i]; }
@@ -58,8 +53,7 @@ HOST_DEVICE_INLINE ssize_t offset(const Index1* const coor, const Index2* const 
 }
 
 template <size_t Rank, class Index1, class Index2>
-HOST_DEVICE_INLINE void deserialize(Index1* const coor, ssize_t offset, const Index2* const size)
-{
+HOST_DEVICE_INLINE void deserialize(Index1* const coor, ssize_t offset, const Index2* const size) {
 #pragma unroll
   for (ssize_t i = Rank - 1; i >= 0; --i) {
     auto s = size[i];
@@ -76,38 +70,45 @@ template <size_t Rank> class Size {
  public:
   static constexpr size_t rank = Rank;
   using index_vec_t = Vec<Rank, ssize_t>;
-  HOST_DEVICE_INLINE explicit Size(const index_vec_t& size) : size_(size)
-  {
+  HOST_DEVICE_INLINE explicit Size(const index_vec_t& size) : size_(size) {
     stride_[Rank - 1] = 1;
 #pragma unroll
     for (ssize_t i = Rank - 1; i >= 1; --i) stride_[i - 1] = size[i] * stride_[i];
   };
   Size(const Size<Rank>& size) = default;
   HOST_DEVICE_INLINE Size() = delete;
-  HOST_DEVICE_INLINE const index_vec_t& sizes() const { return size_; }
-  HOST_DEVICE_INLINE ssize_t size(ssize_t idx) const { return size_[idx]; }
-  HOST_DEVICE_INLINE ssize_t stride(ssize_t idx) const { return stride_[idx]; }
-  HOST_DEVICE_INLINE ssize_t numel() const { return size(0) * stride(0); }
-  HOST_DEVICE_INLINE ssize_t& operator[](ssize_t idx) { return size_[idx]; }
-  HOST_DEVICE_INLINE const ssize_t& operator[](ssize_t idx) const { return size_[idx]; }
+  HOST_DEVICE_INLINE const index_vec_t& sizes() const {
+    return size_;
+  }
+  HOST_DEVICE_INLINE ssize_t size(ssize_t idx) const {
+    return size_[idx];
+  }
+  HOST_DEVICE_INLINE ssize_t stride(ssize_t idx) const {
+    return stride_[idx];
+  }
+  HOST_DEVICE_INLINE ssize_t numel() const {
+    return size(0) * stride(0);
+  }
+  HOST_DEVICE_INLINE ssize_t& operator[](ssize_t idx) {
+    return size_[idx];
+  }
+  HOST_DEVICE_INLINE const ssize_t& operator[](ssize_t idx) const {
+    return size_[idx];
+  }
 
-  template <class Index> HOST_DEVICE_INLINE ssize_t is_valid(const Index* const coor) const
-  {
+  template <class Index> HOST_DEVICE_INLINE ssize_t is_valid(const Index* const coor) const {
     return indexing::is_valid<Rank>(coor, size_.data());
   }
 
-  template <class Index> HOST_DEVICE_INLINE ssize_t is_valid(const Vec<Rank, Index>& coor) const
-  {
+  template <class Index> HOST_DEVICE_INLINE ssize_t is_valid(const Vec<Rank, Index>& coor) const {
     return indexing::is_valid<Rank>(coor.data(), size_.data());
   }
 
-  template <class... Coors> HOST_DEVICE_INLINE ssize_t operator()(const Coors... coors) const
-  {
+  template <class... Coors> HOST_DEVICE_INLINE ssize_t operator()(const Coors... coors) const {
     return indexing::offset_args(stride_.data(), coors...);
   }
 
-  template <class Index> HOST_DEVICE_INLINE ssize_t offset(const Index* const coor) const
-  {
+  template <class Index> HOST_DEVICE_INLINE ssize_t offset(const Index* const coor) const {
 #if defined(__CUDACC_DEBUG__) || defined(DEBUG)
 #  pragma unroll
     for (ssize_t i = 0; i < Rank; i++)
@@ -118,8 +119,7 @@ template <size_t Rank> class Size {
     return indexing::offset<Rank>(coor, size_.data());
   }
 
-  template <class Index> HOST_DEVICE_INLINE ssize_t offset(const Vec<Rank, Index>& coor) const
-  {
+  template <class Index> HOST_DEVICE_INLINE ssize_t offset(const Vec<Rank, Index>& coor) const {
 #if defined(__CUDACC_DEBUG__) || defined(DEBUG)
 #  pragma unroll
     for (ssize_t i = 0; i < Rank; i++)
@@ -130,13 +130,11 @@ template <size_t Rank> class Size {
     return indexing::offset<Rank>(coor.data(), size_.data());
   }
 
-  template <class Index> HOST_DEVICE_INLINE void deserialize(Index* const coor, ssize_t offset) const
-  {
+  template <class Index> HOST_DEVICE_INLINE void deserialize(Index* const coor, ssize_t offset) const {
     return indexing::deserialize<Rank>(coor, offset, size_.data());
   }
 
-  template <class Index> HOST_DEVICE_INLINE void deserialize(Vec<Rank, Index>& coor, ssize_t offset) const
-  {
+  template <class Index> HOST_DEVICE_INLINE void deserialize(Vec<Rank, Index>& coor, ssize_t offset) const {
     return indexing::deserialize<Rank>(coor.data(), offset, size_.data());
   }
 
@@ -166,27 +164,22 @@ template <size_t Rank, class T> class RefND {
   HOST_DEVICE_INLINE ssize_t numby() const { return size_and_stride_.size(0) * size_and_stride_.stride(0) * sizeof(T); }
   HOST_DEVICE_INLINE T& operator[](ssize_t idx) { return data_[idx]; }
   HOST_DEVICE_INLINE const T& operator[](ssize_t idx) const { return data_[idx]; }
-  template <class... Coors> HOST_DEVICE_INLINE T& operator()(Coors... coors)
-  {
+  template <class... Coors> HOST_DEVICE_INLINE T& operator()(Coors... coors) {
     static_assert(sizeof...(coors) == Rank, "error! wrong index dim");
     return data_[size_and_stride_(coors...)];
   }
-  template <class... Coors> HOST_DEVICE_INLINE const T& operator()(Coors... coors) const
-  {
+  template <class... Coors> HOST_DEVICE_INLINE const T& operator()(Coors... coors) const {
     static_assert(sizeof...(coors) == Rank, "error! wrong index dim");
     return data_[size_and_stride_(coors...)];
   }
-  template <class... Coors> HOST_DEVICE_INLINE ssize_t offset(Coors... coors) const
-  {
+  template <class... Coors> HOST_DEVICE_INLINE ssize_t offset(Coors... coors) const {
     static_assert(sizeof...(coors) == Rank, "error! wrong index dim");
     return size_and_stride_(coors...);
   }
-  template <class Index> HOST_DEVICE_INLINE void deserialize(Index* const coor, ssize_t offset) const
-  {
+  template <class Index> HOST_DEVICE_INLINE void deserialize(Index* const coor, ssize_t offset) const {
     size_and_stride_.template deserialize(coor, offset);
   }
-  template <class... Coors> HOST_DEVICE_INLINE RefND<Rank - sizeof...(Coors), T> subview(Coors... coors)
-  {
+  template <class... Coors> HOST_DEVICE_INLINE RefND<Rank - sizeof...(Coors), T> subview(Coors... coors) {
     constexpr ssize_t rm_dim = sizeof...(Coors);
     constexpr ssize_t new_dim = Rank - rm_dim;
     ptr_t new_data = data_ + size_and_stride_(coors...);
@@ -195,8 +188,7 @@ template <size_t Rank, class T> class RefND {
     for (ssize_t i = 0; i < new_dim; i++) new_size[i] = size_and_stride_.size(i + rm_dim);
     return RefND<new_dim, T>(new_data, new_size);
   }
-  template <class... Coors> HOST_DEVICE_INLINE RefND<Rank - sizeof...(Coors), const T> subview(Coors... coors) const
-  {
+  template <class... Coors> HOST_DEVICE_INLINE RefND<Rank - sizeof...(Coors), const T> subview(Coors... coors) const {
     constexpr ssize_t rm_dim = sizeof...(Coors);
     constexpr ssize_t new_dim = Rank - rm_dim;
     const T* new_data = data_ + size_and_stride_(coors...);
@@ -218,11 +210,10 @@ template <class T> using Ref4D = RefND<4, T>;
 template <class T> using Ref5D = RefND<5, T>;
 
 #if NV_TENSORRT_MAJOR < 8
-#define AsciiChar char
+#  define AsciiChar char
 #endif
 
-template <ssize_t Rank> Size<Rank> fromTensorRT(nvinfer1::PluginTensorDesc inputDesc)
-{
+template <ssize_t Rank> Size<Rank> fromTensorRT(nvinfer1::PluginTensorDesc inputDesc) {
   Vec<Rank, ssize_t> size;
 #pragma unroll
   for (size_t i = 0; i < Rank; i++) { size[i] = inputDesc.dims.d[i]; }
@@ -231,8 +222,7 @@ template <ssize_t Rank> Size<Rank> fromTensorRT(nvinfer1::PluginTensorDesc input
 
 template <ssize_t Rank, class T, class T_void>
 std::enable_if_t<std::is_void<T_void>::value, RefND<Rank, T>> fromTensorRT(T_void* data,
-                                                                           nvinfer1::PluginTensorDesc inputDesc)
-{
+                                                                           nvinfer1::PluginTensorDesc inputDesc) {
   using namespace nvinfer1;
   assert(inputDesc.format == TensorFormat::kLINEAR);
   assert(inputDesc.dims.nbDims == Rank);
@@ -277,22 +267,19 @@ class SerializeStream {
       : data_(reinterpret_cast<const char*>(data)), pos_(0), size_(size){};
   inline size_t curPos() const { return pos_; };
 
-  template <class Iter> SerializeStream& dumpRange(Iter first, Iter last)
-  {
+  template <class Iter> SerializeStream& dumpRange(Iter first, Iter last) {
     while (pos_ + sizeof(*first) <= size_ && first != last) { *this << *(first++); }
     if (first != last) { printf("serialize out of buffer boundary!"); }
     return *this;
   }
-  template <class Iter> SerializeStream& loadRange(Iter first, Iter last)
-  {
+  template <class Iter> SerializeStream& loadRange(Iter first, Iter last) {
     while (pos_ + sizeof(*first) <= size_ && first != last) { *this >> *(first++); }
     if (first != last) { printf("deserialize out of buffer boundary!"); }
     return *this;
   }
 };
 
-template <class T> SerializeStream& operator<<(SerializeStream& s, const T& x)
-{
+template <class T> SerializeStream& operator<<(SerializeStream& s, const T& x) {
   if (s.pos_ + sizeof(T) > s.size_) {
     printf("serialize out of buffer boundary!");
     return s;
@@ -304,8 +291,7 @@ template <class T> SerializeStream& operator<<(SerializeStream& s, const T& x)
   s.pos_ += sizeof(T);
   return s;
 };
-template <class T> SerializeStream& operator>>(SerializeStream& s, T& x)
-{
+template <class T> SerializeStream& operator>>(SerializeStream& s, T& x) {
   if (s.pos_ + sizeof(T) > s.size_) {
     printf("deserialize out of buffer boundary!");
     return s;
@@ -325,13 +311,11 @@ class DeviceVector {
  public:
   DeviceVector() : data_(nullptr){};
   DeviceVector(const DeviceVector&) = delete;
-  explicit DeviceVector(size_t bytes) : data_(nullptr)
-  {
+  explicit DeviceVector(size_t bytes) : data_(nullptr) {
     auto err = cudaMalloc(&data_, bytes);
     assert(err == cudaSuccess);
   }
-  ~DeviceVector()
-  {
+  ~DeviceVector() {
     if (data_) cudaFree(data_);
   }
   inline void* data() { return data_; }

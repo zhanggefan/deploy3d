@@ -23,8 +23,8 @@ class ScatterTo(torch.autograd.Function):
                 reduce_type: int) -> torch.Tensor:
         _, num_feats = batch_point_feats.shape
         num_coors = scatter_count.shape[0]
-        reduces_feats = batch_point_feats.new_zeros((num_coors, num_feats))
-        return reduces_feats
+        reduced_feats = batch_point_feats.new_zeros((num_coors, num_feats))
+        return reduced_feats
 
     @staticmethod
     def symbolic(g: torch._C.Graph,

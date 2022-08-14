@@ -46,6 +46,8 @@ class TRTPluginModule:
 
     @staticmethod
     def _malloc(tensors):
+        if not isinstance(tensors, (list, tuple)):
+            tensors = [tensors]
         return [t.detach().clone().cuda() for t in tensors]
 
     @staticmethod
@@ -79,8 +81,12 @@ class TRTPluginModule:
         assert context, "failed to make execution context!"
 
         outputs = module(*input_tensors)
+        is_single_tensor = not isinstance(outputs, (list, tuple))
         inputs = cls._malloc(input_tensors)
         outputs = cls._malloc(outputs)
         bindings, mem_holder = cls._to_bindings(inputs + outputs)
         context.execute_v2(bindings)
-        return outputs
+        if is_single_tensor:
+            return outputs[0]
+        else:
+            return outputs
