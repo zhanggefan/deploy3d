@@ -17,7 +17,7 @@ class GatherBack(torch.autograd.Function):
     def forward(ctx,
                 reduces_feats: torch.Tensor,
                 scatter_to: torch.Tensor) -> torch.Tensor:
-        num_pts = scatter_to.shape
+        num_pts = scatter_to.shape[0]
         _, num_feats = reduces_feats.shape
         batch_point_feats = reduces_feats.new_zeros((num_pts, num_feats))
         return batch_point_feats

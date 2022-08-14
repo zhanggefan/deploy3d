@@ -9,3 +9,4 @@ link_directories(${TRT_LINK_DIRECTORIES})
 
 add_subdirectory(spconv)
 add_subdirectory(voxel_encoder)
+add_subdirectory(point_voxel_mapping)

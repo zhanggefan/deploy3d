@@ -14,9 +14,10 @@ using utils::nd::Ref3D;
 namespace spconv {
 namespace kernel {
 template <class T, class Index>
-__global__ void
-gatherFeats(Ref2D<T> outFeats, const Ref2D<T> inFeats, const Ref1D<Index> bufferFromIn, const Ref1D<Index> bufferOffset)
-{
+__global__ void gatherFeats(Ref2D<T> outFeats,
+                            const Ref2D<T> inFeats,
+                            const Ref1D<Index> bufferFromIn,
+                            const Ref1D<Index> bufferOffset) {
   size_t numFeats = outFeats.size(1);
   size_t numOutElem = bufferFromIn.size(0) * numFeats;
   for (size_t ix : KernelLoopX<size_t>(numOutElem)) {
@@ -32,8 +33,7 @@ __global__ void gatherFeats(Ref2D<T> outFeats,
                             const Index numBufBeforeCenter,
                             const Ref2D<T> inFeats,
                             const Ref1D<Index> bufferFromIn,
-                            const Ref1D<Index> bufferOffset)
-{
+                            const Ref1D<Index> bufferOffset) {
   size_t numFeats = outFeats.size(1);
   size_t numOutElem = (bufferFromIn.size(0) - numBufToSkip) * numFeats;
   for (size_t ix : KernelLoopX<size_t>(numOutElem)) {
@@ -44,8 +44,7 @@ __global__ void gatherFeats(Ref2D<T> outFeats,
   }
 }
 
-template <class T> __global__ void reduceInitFeats(Ref2D<T> outFeats, const Ref1D<T> initVec)
-{
+template <class T> __global__ void reduceInitFeats(Ref2D<T> outFeats, const Ref1D<T> initVec) {
   size_t numOuts = outFeats.size(0);
   size_t numFeats = outFeats.size(1);
   size_t numOutElem = numOuts * numFeats;
@@ -54,8 +53,7 @@ template <class T> __global__ void reduceInitFeats(Ref2D<T> outFeats, const Ref1
   }
 }
 
-template <class T> __global__ void reduceInitFeats(Ref2D<T> outFeats, const T initVal)
-{
+template <class T> __global__ void reduceInitFeats(Ref2D<T> outFeats, const T initVal) {
   size_t numOuts = outFeats.size(0);
   size_t numFeats = outFeats.size(1);
   size_t numOutElem = numOuts * numFeats;
@@ -66,8 +64,7 @@ template <class T, class Index, class OP>
 __global__ void atomicReduceFeats(Ref2D<T> outFeats,
                                   const Ref2D<T> inFeats,
                                   const Ref1D<Index> bufferToOut,
-                                  const Ref1D<Index> bufferOffset)
-{
+                                  const Ref1D<Index> bufferOffset) {
   size_t numFeats = outFeats.size(1);
   size_t numInElem = bufferToOut.size(0) * numFeats;
   for (size_t ix : KernelLoopX<size_t>(numInElem)) {
@@ -84,8 +81,7 @@ __global__ void atomicReduceFeats(Ref2D<T> outFeats,
                                   const Index numBufBeforeCenter,
                                   const Ref2D<T> inFeats,
                                   const Ref1D<Index> bufferToOut,
-                                  const Ref1D<Index> bufferOffset)
-{
+                                  const Ref1D<Index> bufferOffset) {
   size_t numFeats = outFeats.size(1);
   size_t numInElem = (bufferToOut.size(0) - numBufToSkip) * numFeats;
   for (size_t ix : KernelLoopX<size_t>(numInElem)) {
@@ -103,8 +99,7 @@ __global__ void segmentReduceFeats(Ref2D<T> outFeats,
                                    const Index segmentLen,
                                    const Ref2D<T> inFeats,
                                    const Ref1D<Index> bufferToOut,
-                                   const Ref1D<Index> bufferOffset)
-{
+                                   const Ref1D<Index> bufferOffset) {
   size_t numFeats = outFeats.size(1);
   for (size_t ix : KernelLoopX<size_t>(segmentLen * numFeats)) {
     auto rowId = segmentBegin + ix / numFeats;
@@ -117,31 +112,25 @@ __global__ void segmentReduceFeats(Ref2D<T> outFeats,
 
 namespace reduce {
 
-template <class T> struct NoAtomSum
-{
+template <class T> struct NoAtomSum {
   HOST_DEVICE_INLINE void operator()(T* addr, T val) const { *addr += val; }
 };
 
-template <class T> struct NoAtomMax
-{
-  HOST_DEVICE_INLINE void operator()(T* addr, T val) const
-  {
+template <class T> struct NoAtomMax {
+  HOST_DEVICE_INLINE void operator()(T* addr, T val) const {
     auto ori = *addr;
     *addr = max(ori, val);
   }
 };
 
-template <class T> struct AtomSum
-{
+template <class T> struct AtomSum {
   HOST_DEVICE_INLINE void operator()(T* addr, T val) const { atomicAdd(addr, val); }
 };
 
 template <class T> struct AtomMax;
 
-template <> struct AtomMax<double>
-{
-  DEVICE_INLINE void operator()(double* addr, double val) const
-  {
+template <> struct AtomMax<double> {
+  DEVICE_INLINE void operator()(double* addr, double val) const {
     auto* address_as_ull = reinterpret_cast<unsigned long long*>(addr);
     unsigned long long old = *address_as_ull, assumed;
     do {
@@ -153,10 +142,8 @@ template <> struct AtomMax<double>
   }
 };
 
-template <> struct AtomMax<float>
-{
-  DEVICE_INLINE void operator()(float* addr, float val) const
-  {
+template <> struct AtomMax<float> {
+  DEVICE_INLINE void operator()(float* addr, float val) const {
     auto* address_as_i = reinterpret_cast<int32_t*>(addr);
     int32_t old = *address_as_i, assumed;
     do {
@@ -166,10 +153,8 @@ template <> struct AtomMax<float>
   }
 };
 
-template <> struct AtomMax<half>
-{
-  DEVICE_INLINE void operator()(half* addr, half val) const
-  {
+template <> struct AtomMax<half> {
+  DEVICE_INLINE void operator()(half* addr, half val) const {
     auto* address_as_s = reinterpret_cast<uint16_t*>(addr);
     uint16_t old = *address_as_s, assumed;
     do {
@@ -182,12 +167,10 @@ template <> struct AtomMax<half>
 }  // namespace reduce
 namespace blas {
 
-template <class T> struct DeviceZeroOne
-{
+template <class T> struct DeviceZeroOne {
   T d[2];
   T* devPtr;
-  DeviceZeroOne()
-  {
+  DeviceZeroOne() {
     d[0] = T(0.0);
     d[1] = T(1.0);
     cudaMalloc(&devPtr, sizeof(d));
@@ -199,20 +182,17 @@ template <class T> struct DeviceZeroOne
 };
 
 template <class T> struct cublasConfigs;
-template <> struct cublasConfigs<double>
-{
+template <> struct cublasConfigs<double> {
   static constexpr cublasComputeType_t computeType = CUBLAS_COMPUTE_64F;
   static constexpr cudaDataType dataType = CUDA_R_64F;
   static constexpr cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT;
 };
-template <> struct cublasConfigs<float>
-{
+template <> struct cublasConfigs<float> {
   static constexpr cublasComputeType_t computeType = CUBLAS_COMPUTE_32F;
   static constexpr cudaDataType dataType = CUDA_R_32F;
   static constexpr cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT_TENSOR_OP;
 };
-template <> struct cublasConfigs<half>
-{
+template <> struct cublasConfigs<half> {
   static constexpr cublasComputeType_t computeType = CUBLAS_COMPUTE_16F;
   static constexpr cudaDataType dataType = CUDA_R_16F;
   static constexpr cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT_TENSOR_OP;
@@ -232,8 +212,7 @@ __inline__ cublasStatus_t MM(cublasHandle_t handle,
                              int ldb,
                              const T* beta,
                              T* C,
-                             int ldc)
-{
+                             int ldc) {
   return cublasGemmEx(handle, transa, transb, m, n, k, alpha, A, cublasConfigs<T>::dataType, lda, B,
                       cublasConfigs<T>::dataType, ldb, beta, C, cublasConfigs<T>::dataType, ldc,
                       cublasConfigs<T>::computeType, cublasConfigs<T>::algo);
@@ -257,8 +236,7 @@ __inline__ cublasStatus_t bMM(cublasHandle_t handle,
                               T* C,
                               int ldc,
                               ssize_t strideC,
-                              size_t batchCount)
-{
+                              size_t batchCount) {
   return cublasGemmStridedBatchedEx(handle, transa, transb, m, n, k, alpha, A, cublasConfigs<T>::dataType, lda, strideA,
                                     B, cublasConfigs<T>::dataType, ldb, strideB, beta, C, cublasConfigs<T>::dataType,
                                     ldc, strideC, batchCount, cublasConfigs<T>::computeType, cublasConfigs<T>::algo);
@@ -277,8 +255,7 @@ void indexConv(const GPU& d,
                const Ref1D<Index>& bufferFromIn,
                const Ref1D<Index>& bufferToOut,
                const Ref1D<Index>& bufferOffset,
-               const Ref1D<Index>& bufferKernelNumHost)
-{
+               const Ref1D<Index>& bufferKernelNumHost) {
   static blas::DeviceZeroOne<T> Consts;
   size_t kVol = filters.size(0);
   size_t inNum = inFeats.size(0);
@@ -290,8 +267,9 @@ void indexConv(const GPU& d,
 
   ssize_t numThreads;
 
-  if (bias.empty()) { cudaMemsetAsync(outFeats.data(), 0, outFeats.numel() * sizeof(T), d.getStream()); }
-  else {
+  if (bias.empty()) {
+    cudaMemsetAsync(outFeats.data(), 0, outFeats.numel() * sizeof(T), d.getStream());
+  } else {
     numThreads = (outFeats.numel() + FeatsPerThread - 1) / FeatsPerThread;
     kernel::reduceInitFeats<T><<<getBlocks(numThreads), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, bias);
   }
@@ -343,8 +321,7 @@ void indexSubM(const GPU& d,
                const Ref1D<Index>& bufferFromIn,
                const Ref1D<Index>& bufferToOut,
                const Ref1D<Index>& bufferOffset,
-               const Ref1D<Index>& bufferKernelNumHost)
-{
+               const Ref1D<Index>& bufferKernelNumHost) {
   static blas::DeviceZeroOne<T> Consts;
   size_t kVol = filters.size(0);
   size_t inNum = inFeats.size(0);
@@ -356,8 +333,9 @@ void indexSubM(const GPU& d,
 
   ssize_t numThreads;
 
-  if (bias.empty()) { cudaMemsetAsync(outFeats.data(), 0, outFeats.numel() * sizeof(T), d.getStream()); }
-  else {
+  if (bias.empty()) {
+    cudaMemsetAsync(outFeats.data(), 0, outFeats.numel() * sizeof(T), d.getStream());
+  } else {
     numThreads = (outFeats.numel() + FeatsPerThread - 1) / FeatsPerThread;
     kernel::reduceInitFeats<T><<<getBlocks(numThreads), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, bias);
   }
@@ -423,8 +401,7 @@ void indexConvBP(const GPU& d,
                  const Ref1D<Index>& bufferFromIn,
                  const Ref1D<Index>& bufferToOut,
                  const Ref1D<Index>& bufferOffset,
-                 const Ref1D<Index>& bufferKernelNumHost)
-{
+                 const Ref1D<Index>& bufferKernelNumHost) {
   static blas::DeviceZeroOne<T> Consts;
   size_t kVol = filters.size(0);
   size_t inNum = inFeats.size(0);
@@ -508,8 +485,7 @@ void indexSubMBP(const GPU& d,
                  const Ref1D<Index>& bufferFromIn,
                  const Ref1D<Index>& bufferToOut,
                  const Ref1D<Index>& bufferOffset,
-                 const Ref1D<Index>& bufferKernelNumHost)
-{
+                 const Ref1D<Index>& bufferKernelNumHost) {
   static blas::DeviceZeroOne<T> Consts;
   size_t kVol = filters.size(0);
   size_t inNum = inFeats.size(0);
@@ -538,8 +514,7 @@ void indexSubMBP(const GPU& d,
   if (inNumFeats < outNumFeats) {
     cudaMemset2DAsync(bufMMIn.data(), strideBufMMIn * sizeof(T), 0, inNumFeats * convInNumBest * sizeof(T), kVol,
                       d.getStream());
-  }
-  else {
+  } else {
     cudaMemset2DAsync(bufMMOut.data(), strideBufMMOut * sizeof(T), 0, outNumFeats * convInNumBest * sizeof(T), kVol,
                       d.getStream());
   }
