@@ -51,10 +51,14 @@ class TRTPluginModule:
         return [t.detach().clone().cuda() for t in tensors]
 
     @staticmethod
-    def _to_bindings(tensors):
+    def _to_bindings(context, inputs, outputs):
         bindings = []
         mem_holder = []
-        for t in tensors:
+        for idx in range(context.engine.num_bindings):
+            binding_name = context.engine.get_binding_name(idx)
+            in_out, in_out_idx = binding_name.split('_')
+            in_out_idx = int(in_out_idx)
+            t = inputs[in_out_idx] if in_out == 'in' else outputs[in_out_idx]
             mem_holder.append(t if t.numel() else t.new_empty([1]))
             bindings.append(mem_holder[-1].data_ptr())
         return bindings, mem_holder
@@ -62,11 +66,15 @@ class TRTPluginModule:
     @classmethod
     def forward(cls, module, input_tensors, configs=[]):
         cls._load_libraries()
-        if issubclass(module, torch.autograd.Function):
+        if not isinstance(module, torch.nn.Module):
             module = ModuleOfFunction(module, *configs)
         f = io.BytesIO()
+        outputs = module(*input_tensors)
         torch.onnx.export(module, tuple(input_tensors), f,
-                          enable_onnx_checker=False)
+                          enable_onnx_checker=False,
+                          input_names=[f'in_{idx}' for idx in range(
+                              len(input_tensors))],
+                          output_names=[f'out_{idx}' for idx in range(len(outputs))])
         builder = trt.Builder(cls._logger())
         network = builder.create_network(
             1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
@@ -80,11 +88,10 @@ class TRTPluginModule:
         context = engine.create_execution_context()
         assert context, "failed to make execution context!"
 
-        outputs = module(*input_tensors)
         is_single_tensor = not isinstance(outputs, (list, tuple))
         inputs = cls._malloc(input_tensors)
         outputs = cls._malloc(outputs)
-        bindings, mem_holder = cls._to_bindings(inputs + outputs)
+        bindings, mem_holder = cls._to_bindings(context, inputs, outputs)
         context.execute_v2(bindings)
         if is_single_tensor:
             return outputs[0]
