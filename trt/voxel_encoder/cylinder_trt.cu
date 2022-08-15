@@ -64,9 +64,12 @@ __global__ void cylinderize(Ref1D<int32_t> hashSlot,  // [numPtsIn]
         zCoors = zCoors < 0 ? 0 : zCoors;
         phiCoors = phiCoors < 0 ? 0 : phiCoors;
         rhoCoors = rhoCoors < 0 ? 0 : rhoCoors;
-        ptsCoors[3] = zCoors >= zDim ? (zDim - 1) : zCoors;
-        ptsCoors[2] = phiCoors >= phiDim ? (phiDim - 1) : phiCoors;
-        ptsCoors[1] = rhoCoors >= rhoDim ? (rhoDim - 1) : rhoCoors;
+        zCoors = zCoors >= zDim ? (zDim - 1) : zCoors;
+        phiCoors = phiCoors >= phiDim ? (phiDim - 1) : phiCoors;
+        rhoCoors = rhoCoors >= rhoDim ? (rhoDim - 1) : rhoCoors;
+        ptsCoors[3] = zCoors;
+        ptsCoors[2] = phiCoors;
+        ptsCoors[1] = rhoCoors;
         hashSlot[ix] = hash.insert(inSpatialShape.template offset(ptsCoors), 1);
 
         ptsAugFeats[0] = z;

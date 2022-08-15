@@ -22,27 +22,42 @@ def _cylinder(max_num_act_out):
     max, min = cylinder_config[3:], cylinder_config[:3]
     span = (max - min)
     step = span / size
-    gt_coors = ((gt_polar - min) / step).int()
+    gt_coors_f = (gt_polar - min) / step
+
+    mask = (gt_coors_f - gt_coors_f.round()).abs().amin(-1) > 1e-3
+    gt_polar = gt_polar[mask]
+    batch_point_feats = batch_point_feats[mask]
+    batch_indices = batch_indices[mask]
+    gt_coors_f = gt_coors_f[mask]
+
+    gt_coors = gt_coors_f.int()
     gt_coor_z, gt_coor_phi, gt_coor_rho = gt_coors.split(1, -1)
-    gt_coor_z.clamp_(0, size[0]-1)
-    gt_coor_phi.clamp_(0, size[1]-1)
-    gt_coor_rho.clamp_(0, size[2]-1)
+    gt_coor_z.clamp_(0, size[0] - 1)
+    gt_coor_phi.clamp_(0, size[1] - 1)
+    gt_coor_rho.clamp_(0, size[2] - 1)
     gt_coors = torch.cat([batch_indices.unsqueeze(-1),
                           gt_coor_rho, gt_coor_phi, gt_coor_z], dim=-1)
     gt_coors, gt_scatter_to, gt_counts = gt_coors.unique(sorted=True, return_inverse=True,
                                                          return_counts=True, dim=0)
 
-    gt_pts_ctr = (torch.cat([gt_coor_rho, gt_coor_phi,
-                  gt_coor_z],  dim=-1) + 0.5) * step + min
+    gt_pts_ctr = (torch.cat([gt_coor_z, gt_coor_phi,
+                             gt_coor_rho], dim=-1) + 0.5) * step + min
 
     gt_pts_diff = gt_polar - gt_pts_ctr
-    pts_feats_gt = torch.cat([gt_polar, gt_pts_diff, x, y, other], dim=-1)
+    gt_pts_feats = torch.cat([gt_polar,
+                              gt_pts_diff,
+                              batch_point_feats[:, :2],
+                              batch_point_feats[:, 3:]], dim=-1)
 
     (pts_feats, scatter_to, scatter_count, out_coors, num_act_out) = TRTPluginModule.forward(
         CylinderEncoder,
         input_tensors=(batch_point_feats, batch_indices,
                        cylinder_config, in_spatial_shape,),
         configs=[max_num_act_out])
+    # correctness of pts_feats
+    valid_pts = scatter_to >= 0
+    assert torch.allclose(pts_feats.cpu()[valid_pts], gt_pts_feats[valid_pts], atol=1e-3, rtol=1e-3)
+
     # unique-ness of out_coors
     num_act_out = num_act_out.cpu()
     out_coors = out_coors.cpu()[:num_act_out]
@@ -55,7 +70,7 @@ def _cylinder(max_num_act_out):
     gt_coors_tuple = [tuple(c) for c in gt_coors.tolist()]
     gt_coors_dict = {c: idx for idx, c in enumerate(gt_coors_tuple)}
     permute_index = torch.tensor([gt_coors_dict[c]
-                                 for c in out_coors_tuple], dtype=torch.long)
+                                  for c in out_coors_tuple], dtype=torch.long)
     permute_scatter_to = permute_index[scatter_to.long()]
     assert (permute_scatter_to[scatter_to.ge(0)] ==
             gt_scatter_to[scatter_to.ge(0)]).all()
