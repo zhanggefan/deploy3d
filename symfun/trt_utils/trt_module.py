@@ -56,9 +56,13 @@ class TRTPluginModule:
         mem_holder = []
         for idx in range(context.engine.num_bindings):
             binding_name = context.engine.get_binding_name(idx)
+            binding_shape = context.engine.get_binding_shape(idx)
             in_out, in_out_idx = binding_name.split('_')
             in_out_idx = int(in_out_idx)
             t = inputs[in_out_idx] if in_out == 'in' else outputs[in_out_idx]
+            assert tuple(t.shape) == tuple(
+                binding_shape), (f'wrong io shape of '
+                                 f'{binding_name} which should be {binding_shape}')
             mem_holder.append(t if t.numel() else t.new_empty([1]))
             bindings.append(mem_holder[-1].data_ptr())
         return bindings, mem_holder
