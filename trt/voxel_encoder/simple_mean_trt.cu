@@ -63,6 +63,7 @@ template <class T>
 __global__ void scatterAddFeats(Ref2D<T> outFeats,  // [maxNumActOut, 4]
                                 Ref2D<int32_t> outCoors,  // [maxNumActOut, 4]
                                 Ref1D<int32_t> outPtsCount,  // [maxNumActOut]
+                                int32_t* numActOut,
                                 const Ref2D<const T> batchPointFeats,  // [numPtsIn, 4]
                                 const Ref1D<int32_t> hashSlot,  // [numPtsIn]
                                 const Ref1D<int32_t> hashKey,  // [numPtsIn * 2]
@@ -85,6 +86,7 @@ __global__ void scatterAddFeats(Ref2D<T> outFeats,  // [maxNumActOut, 4]
         if (first == 0) { inSpatialShape.template deserialize(&outCoors(uniqueIndex, 0), coorOffset); }
       }
     }
+    if (ix == 0) { *numActOut = (*numActOut) > maxNumActOut ? maxNumActOut : (*numActOut); }
   }
 }
 
@@ -107,7 +109,7 @@ template <class Hash> __global__ void resetHashKernel(Hash hash) {
 namespace func {
 constexpr int hashSpace = 2;
 
-size_t dynMeanVFEMalloc(const GPU& d, const size_t numPtsIn) {
+size_t simpleMeanEncoderMalloc(const GPU& d, const size_t numPtsIn) {
   size_t reqBytes = 0;
   ssize_t numElemHash = numPtsIn * hashSpace;
   cub::DeviceScan::InclusiveSum<int32_t*, int32_t*>(nullptr, reqBytes, nullptr, nullptr, numElemHash, d.getStream());
@@ -116,15 +118,15 @@ size_t dynMeanVFEMalloc(const GPU& d, const size_t numPtsIn) {
 }
 
 template <class T>
-void dynMeanVFE(const GPU& d,
-                Ref1D<uint8_t>& workingStorage,
-                Ref2D<T>& outFeats,
-                Ref2D<int32_t>& outCoors,
-                int32_t* numActOut,
-                const Ref2D<const T>& batchPointFeats,
-                const Ref1D<const int32_t>& batchIndices,
-                const Ref1D<const T>& voxelConfig,
-                const Size<4>& inSpatialShape) {
+void simpleMeanEncoder(const GPU& d,
+                       Ref1D<uint8_t>& workingStorage,
+                       Ref2D<T>& outFeats,
+                       Ref2D<int32_t>& outCoors,
+                       int32_t* numActOut,
+                       const Ref2D<const T>& batchPointFeats,
+                       const Ref1D<const int32_t>& batchIndices,
+                       const Ref1D<const T>& voxelConfig,
+                       const Size<4>& inSpatialShape) {
   auto numPtsIn = batchPointFeats.size(0);
   auto maxNumActOut = outFeats.size(0);
   ssize_t numElemHash = numPtsIn * hashSpace;
@@ -156,7 +158,8 @@ void dynMeanVFE(const GPU& d,
     cudaMemcpyAsync(numActOut, &hashValueIncScan[hashValueIncScan.numel() - 1], sizeof(*numActOut),
                     cudaMemcpyDeviceToDevice, d.getStream());
     kernel::scatterAddFeats<<<getBlocks(numPtsIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(
-        outFeats, outCoors, outPtsCount, batchPointFeats, hashSlot, hashKey, hashValueIncScan, inSpatialShape);
+        outFeats, outCoors, outPtsCount, numActOut, batchPointFeats, hashSlot, hashKey, hashValueIncScan,
+        inSpatialShape);
     kernel::meanFeats<<<getBlocks(std::min(maxNumActOut, numPtsIn)), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         outFeats, outPtsCount, numActOut);
     CHECK_CUDA_ERR();
@@ -270,7 +273,7 @@ class SimpleMeanEncoderPlugin : public IPluginV2DynamicExt {
                           int32_t nbInputs,
                           const PluginTensorDesc* outputs,
                           int32_t nbOutputs) const NOEXCEPT override {
-    return func::dynMeanVFEMalloc(utils::GPU(), inputs[0].dims.d[0]);
+    return func::simpleMeanEncoderMalloc(utils::GPU(), inputs[0].dims.d[0]);
   };
   int32_t enqueue(const PluginTensorDesc* inputDesc,
                   const PluginTensorDesc* outputDesc,
@@ -300,11 +303,11 @@ class SimpleMeanEncoderPlugin : public IPluginV2DynamicExt {
     Ref2D<float> outFeats = fromTensorRT<2, float>(outputs[0], outputDesc[0]);
     Ref2D<int32_t> outCoors = fromTensorRT<2, int32_t>(outputs[1], outputDesc[1]);
     int32_t* numActOut = reinterpret_cast<int32_t*>(outputs[2]);
-    ssize_t workspaceSize = func::dynMeanVFEMalloc(utils::GPU(), inputDesc[0].dims.d[0]);
+    ssize_t workspaceSize = func::simpleMeanEncoderMalloc(utils::GPU(), inputDesc[0].dims.d[0]);
     Ref1D<uint8_t> workingStorage(reinterpret_cast<uint8_t*>(workspace), {workspaceSize});
     auto gpu = utils::GPU(stream);
-    func::dynMeanVFE(gpu, workingStorage, outFeats, outCoors, numActOut, batchPointFeats, batchIndices, voxelConfig,
-                     inSpatialShape);
+    func::simpleMeanEncoder(gpu, workingStorage, outFeats, outCoors, numActOut, batchPointFeats, batchIndices,
+                            voxelConfig, inSpatialShape);
     return 0;
   };
 };
