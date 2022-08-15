@@ -70,11 +70,13 @@ class TRTPluginModule:
             module = ModuleOfFunction(module, *configs)
         f = io.BytesIO()
         outputs = module(*input_tensors)
+        is_single_tensor = not isinstance(outputs, (list, tuple))
+        num_outputs = 1 if is_single_tensor else len(outputs)
         torch.onnx.export(module, tuple(input_tensors), f,
                           enable_onnx_checker=False,
                           input_names=[f'in_{idx}' for idx in range(
                               len(input_tensors))],
-                          output_names=[f'out_{idx}' for idx in range(len(outputs))])
+                          output_names=[f'out_{idx}' for idx in range(num_outputs)])
         builder = trt.Builder(cls._logger())
         network = builder.create_network(
             1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
@@ -88,7 +90,6 @@ class TRTPluginModule:
         context = engine.create_execution_context()
         assert context, "failed to make execution context!"
 
-        is_single_tensor = not isinstance(outputs, (list, tuple))
         inputs = cls._malloc(input_tensors)
         outputs = cls._malloc(outputs)
         bindings, mem_holder = cls._to_bindings(context, inputs, outputs)
