@@ -50,7 +50,7 @@ class CylinderEncoder(torch.autograd.Function):
                     batch_point_feats, batch_indices, cylinder_config,
                     in_spatial_shape,
                     name_s=b'CylinderEncoder', data_s=data,
-                    namespace_s=b'', version_s=b'1.0',
+                    namespace_s=b'', version_s=b'2.0',
                     outputs=5)
 
 

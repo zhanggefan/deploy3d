@@ -48,7 +48,7 @@ class YoloX3dDecode(torch.autograd.Function):
         data += np.array(class_ids, dtype=np.int32).tobytes()
         return g.op('TRT_PluginV2', cls_scores, bbox_preds, voxel_config,
                     name_s=b'YoloX3dDecode', data_s=data, namespace_s=b'',
-                    version_s=b'1.0', outputs=3 * num_class_ids)
+                    version_s=b'2.0', outputs=3 * num_class_ids)
 
 
 yolox3d_decode = YoloX3dDecode.apply

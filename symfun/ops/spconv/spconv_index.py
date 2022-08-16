@@ -102,7 +102,7 @@ class SpConvIdx3d(torch.autograd.Function):
         return g.op('TRT_PluginV2',
                     in_coors, num_act_in, in_spatial_shape,
                     name_s=b"SpConvIdx3d", data_s=data, namespace_s=b'',
-                    version_s=b'1.0', outputs=2 if subm else 5)
+                    version_s=b'2.0', outputs=2 if subm else 5)
 
 
 spconv_index = SpConvIdx3d.apply

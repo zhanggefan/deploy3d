@@ -52,7 +52,7 @@ void gatherBack(const GPU& d,
 
 struct GatherBackPluginConsts {
   static constexpr const char* name = "GatherBack";
-  static constexpr const char* version = "1.0";
+  static constexpr const char* version = "2.0";
 };
 
 class GatherBackPlugin : public IPluginV2DynamicExt {

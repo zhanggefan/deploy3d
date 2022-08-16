@@ -29,7 +29,7 @@ class GatherBack(torch.autograd.Function):
         return g.op('TRT_PluginV2',
                     reduces_feats, scatter_to,
                     name_s=b'GatherBack', data_s=b'',
-                    namespace_s=b'', version_s=b'1.0',
+                    namespace_s=b'', version_s=b'2.0',
                     outputs=1)
 
 

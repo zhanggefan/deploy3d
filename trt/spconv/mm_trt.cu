@@ -21,7 +21,7 @@ using namespace nvinfer1;
 
 struct SpConvMMPluginConsts {
   static constexpr const char* name = "SpConvMM";
-  static constexpr const char* version = "1.0";
+  static constexpr const char* version = "2.0";
 };
 
 #pragma pack(push, 1)

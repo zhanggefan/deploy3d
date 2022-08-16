@@ -39,7 +39,7 @@ class BEVDensify(torch.autograd.Function):
         return g.op('TRT_PluginV2',
                     in_feats, in_coors, num_act_in, in_spatial_shape,
                     name_s=b"BEVDensify", data_s=data,
-                    namespace_s=b'', version_s=b'1.0', outputs=1)
+                    namespace_s=b'', version_s=b'2.0', outputs=1)
 
 
 bev_densify = BEVDensify.apply
