@@ -35,35 +35,5 @@ void indexSubM(const GPU& d,
                const Ref1D<Index>& bufferOffset,
                const Ref1D<Index>& bufferKernelNumHost);
 
-template <size_t FeatsPerThread, class T, class Index>
-void indexConvBP(const GPU& d,
-                 Ref2D<T>& bufMMIn,
-                 Ref2D<T>& bufMMOut,
-                 Ref2D<T>& inFeatsGrad,
-                 Ref3D<T>& filtersGrad,
-                 Ref1D<T>& biasGrad,
-                 const Ref2D<T>& inFeats,
-                 const Ref3D<T>& filters,
-                 const Ref2D<T>& outFeatsGrad,
-                 const Ref1D<Index>& bufferFromIn,
-                 const Ref1D<Index>& bufferToOut,
-                 const Ref1D<Index>& bufferOffset,
-                 const Ref1D<Index>& bufferKernelNumHost);
-
-template <size_t FeatsPerThread, class T, class Index>
-void indexSubMBP(const GPU& d,
-                 Ref2D<T>& bufMMIn,
-                 Ref2D<T>& bufMMOut,
-                 Ref2D<T>& inFeatsGrad,
-                 Ref3D<T>& filtersGrad,
-                 Ref1D<T>& biasGrad,
-                 const Ref2D<T>& inFeats,
-                 const Ref3D<T>& filters,
-                 const Ref2D<T>& outFeatsGrad,
-                 const Ref1D<Index>& bufferFromIn,
-                 const Ref1D<Index>& bufferToOut,
-                 const Ref1D<Index>& bufferOffset,
-                 const Ref1D<Index>& bufferKernelNumHost);
-
 }  // namespace func
 }  // namespace spconv
