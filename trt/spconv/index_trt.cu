@@ -21,19 +21,19 @@ using namespace nvinfer1;
 template <size_t NDim> struct SpConvIdxPluginConsts;
 template <> struct SpConvIdxPluginConsts<1> {
   static constexpr const char* name = "SpConvIdx1d";
-  static constexpr const char* version = "1.0";
+  static constexpr const char* version = "2.0";
 };
 template <> struct SpConvIdxPluginConsts<2> {
   static constexpr const char* name = "SpConvIdx2d";
-  static constexpr const char* version = "1.0";
+  static constexpr const char* version = "2.0";
 };
 template <> struct SpConvIdxPluginConsts<3> {
   static constexpr const char* name = "SpConvIdx3d";
-  static constexpr const char* version = "1.0";
+  static constexpr const char* version = "2.0";
 };
 template <> struct SpConvIdxPluginConsts<4> {
   static constexpr const char* name = "SpConvIdx4d";
-  static constexpr const char* version = "1.0";
+  static constexpr const char* version = "2.0";
 };
 
 #pragma pack(push, 1)

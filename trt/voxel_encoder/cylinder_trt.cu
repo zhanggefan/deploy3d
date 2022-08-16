@@ -177,7 +177,7 @@ void CylinderEncoder(const GPU& d,
 
 struct CylinderEncoderPluginConsts {
   static constexpr const char* name = "CylinderEncoder";
-  static constexpr const char* version = "1.0";
+  static constexpr const char* version = "2.0";
 };
 
 #pragma pack(push, 1)

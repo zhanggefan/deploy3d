@@ -136,7 +136,7 @@ __global__ void initIndex(Ref3D<int32_t> index) {
 
 struct YoloX3dDecodePluginConsts {
   static constexpr const char* name = "YoloX3dDecode";
-  static constexpr const char* version = "1.0";
+  static constexpr const char* version = "2.0";
 };
 
 #pragma pack(push, 1)

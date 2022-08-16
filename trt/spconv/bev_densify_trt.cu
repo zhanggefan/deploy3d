@@ -37,7 +37,7 @@ __global__ void densify(Ref5D<T> outFeatMaps,  // [N, C, Z, Y, X]
 
 struct BEVDensifyPluginConsts {
   static constexpr const char* name = "BEVDensify";
-  static constexpr const char* version = "1.0";
+  static constexpr const char* version = "2.0";
 };
 
 #pragma pack(push, 1)

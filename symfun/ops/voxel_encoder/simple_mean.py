@@ -46,7 +46,7 @@ class SimpleMeanEncoder(torch.autograd.Function):
                     batch_point_feats, batch_indices, voxel_config,
                     in_spatial_shape,
                     name_s=b'SimpleMeanEncoder', data_s=data, namespace_s=b'',
-                    version_s=b'1.0', outputs=3)
+                    version_s=b'2.0', outputs=3)
 
 
 simple_mean_encoder = SimpleMeanEncoder.apply

@@ -36,7 +36,7 @@ class ScatterTo(torch.autograd.Function):
         return g.op('TRT_PluginV2',
                     batch_point_feats, scatter_to, scatter_count,
                     name_s=b'ScatterTo', data_s=data,
-                    namespace_s=b'', version_s=b'1.0',
+                    namespace_s=b'', version_s=b'2.0',
                     outputs=1)
 
 
