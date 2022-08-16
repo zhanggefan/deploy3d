@@ -12,7 +12,7 @@ link_directories(${TRT_LINK_DIRECTORIES})
 list(APPEND DEPLOY3D_SRC spconv/bev_densify_trt.cu spconv/index.cu spconv/index_trt.cu spconv/mm.cu spconv/mm_trt.cu)
 list(APPEND DEPLOY3D_SRC voxel_encoder/cylinder_trt.cu voxel_encoder/simple_mean_trt.cu)
 list(APPEND DEPLOY3D_SRC point_voxel_mapping/gather_back.cu point_voxel_mapping/scatter_to.cu)
-list(APPEND DEPLOY3D_SRC decoder/yolox3d_decode.cu)
+list(APPEND DEPLOY3D_SRC decoder/nms3d.cu decoder/yolox3d_decode.cu)
 
 cuda_add_library(deploy3d SHARED ${DEPLOY3D_SRC})
 target_link_libraries(deploy3d ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY} ${TRT_LIBRARIES})
