@@ -109,10 +109,7 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
                                 const DimsExprs* inputs,
                                 int32_t nbInputs,
                                 IExprBuilder& exprBuilder) NOEXCEPT override {
-    DimsExprs outFeats(inputs[0]);
-    if (!p.subM) outFeats.d[0] = exprBuilder.constant(p.maxNumActOut);
-    outFeats.d[1] = exprBuilder.constant(p.outChannels);
-    return outFeats;
+    return {2, {exprBuilder.constant(p.maxNumActOut), exprBuilder.constant(p.outChannels)}};
   }
   DataType getOutputDataType(int32_t index, DataType const* inputTypes, int32_t nbInputs) const NOEXCEPT override {
     return inputTypes[0];
@@ -181,9 +178,9 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
      *        0: outFeats             [float/half]    [mMaxNumActOut,
      * outChannels]
      * */
-    int32_t numActIn, numActOut;
-    cudaMemcpyAsync(&numActIn, inputs[1], sizeof(int32_t), cudaMemcpyDeviceToHost, stream);
-    cudaMemcpyAsync(&numActOut, inputs[2], sizeof(int32_t), cudaMemcpyDeviceToHost, stream);
+    int32_t numActInIdx, numActOutIdx;
+    cudaMemcpyAsync(&numActInIdx, inputs[1], sizeof(int32_t), cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(&numActOutIdx, inputs[2], sizeof(int32_t), cudaMemcpyDeviceToHost, stream);
     cudaMemcpyAsync(numBufAndBufSegLen.data(), inputs[4], numBufAndBufSegLen.size() * sizeof(int32_t),
                     cudaMemcpyDeviceToHost, stream);
     cudaStreamSynchronize(stream);
@@ -192,15 +189,15 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
     auto* indexPtr = reinterpret_cast<int32_t*>(const_cast<void*>(inputs[3]));
 
     auto indexBufferFromInPtr = indexPtr;
-    auto indexBufferToOutPtr = indexPtr + p.kernelVol * inputDesc[0].dims.d[0];
-    auto indexBufferOffsetPtr = indexPtr + 2 * p.kernelVol * inputDesc[0].dims.d[0];
+    auto indexBufferToOutPtr = indexPtr + inputDesc[3].dims.d[1];
+    auto indexBufferOffsetPtr = indexPtr + 2 * inputDesc[3].dims.d[1];
 
+    int32_t numActInData = numActInIdx, numActOutData = numActOutIdx;
     if (p.inverse) {
       indexBufferFromInPtr = indexBufferToOutPtr;
       indexBufferToOutPtr = indexPtr;
-      int tmp = numActIn;
-      numActIn = numActOut;
-      numActOut = tmp;
+      numActInData = numActOutIdx;
+      numActOutData = numActInIdx;
     }
 
     Ref1D<int32_t> bufferFromIn(indexBufferFromInPtr, {numBuf});
@@ -209,11 +206,11 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
     auto gpu = utils::GPU(stream, cublas);
     if (inputDesc[0].type == DataType::kHALF) {
       using dtype = half;
-      Ref2D<dtype> bufMMIn(reinterpret_cast<dtype*>(workspace), {numActIn * p.kernelVol, p.inChannels});
+      Ref2D<dtype> bufMMIn(reinterpret_cast<dtype*>(workspace), {numActInIdx * p.kernelVol, p.inChannels});
       Ref2D<dtype> bufMMOut(reinterpret_cast<dtype*>(workspace) + bufMMIn.numel(),
-                            {numActIn * p.kernelVol, p.outChannels});
-      Ref2D<dtype> outFeats(reinterpret_cast<dtype*>(outputs[0]), {numActOut, p.outChannels});
-      Ref2D<dtype> inFeats(reinterpret_cast<dtype*>(const_cast<void*>(inputs[0])), {numActIn, p.inChannels});
+                            {numActInIdx * p.kernelVol, p.outChannels});
+      Ref2D<dtype> outFeats(reinterpret_cast<dtype*>(outputs[0]), {numActOutData, p.outChannels});
+      Ref2D<dtype> inFeats(reinterpret_cast<dtype*>(const_cast<void*>(inputs[0])), {numActInData, p.inChannels});
       Ref3D<dtype> filters(reinterpret_cast<dtype*>(wRt->data()), {p.kernelVol, p.inChannels, p.outChannels});
       dtype* biasPtr = nullptr;
       if (p.withBias) biasPtr = reinterpret_cast<dtype*>(bRt->data());
@@ -227,11 +224,11 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
       }
     } else {
       using dtype = float;
-      Ref2D<dtype> bufMMIn(reinterpret_cast<dtype*>(workspace), {numActIn * p.kernelVol, p.inChannels});
+      Ref2D<dtype> bufMMIn(reinterpret_cast<dtype*>(workspace), {numActInIdx * p.kernelVol, p.inChannels});
       Ref2D<dtype> bufMMOut(reinterpret_cast<dtype*>(workspace) + bufMMIn.numel(),
-                            {numActIn * p.kernelVol, p.outChannels});
-      Ref2D<dtype> outFeats(reinterpret_cast<dtype*>(outputs[0]), {numActOut, p.outChannels});
-      Ref2D<dtype> inFeats(reinterpret_cast<dtype*>(const_cast<void*>(inputs[0])), {numActIn, p.inChannels});
+                            {numActInIdx * p.kernelVol, p.outChannels});
+      Ref2D<dtype> outFeats(reinterpret_cast<dtype*>(outputs[0]), {numActOutData, p.outChannels});
+      Ref2D<dtype> inFeats(reinterpret_cast<dtype*>(const_cast<void*>(inputs[0])), {numActInData, p.inChannels});
       Ref3D<dtype> filters(reinterpret_cast<dtype*>(wRt->data()), {p.kernelVol, p.inChannels, p.outChannels});
       dtype* biasPtr = nullptr;
       if (p.withBias) biasPtr = reinterpret_cast<dtype*>(bRt->data());

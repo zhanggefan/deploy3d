@@ -88,6 +88,7 @@ class TRTPluginModule:
         assert parser.parse(f.getvalue()), parser.get_error(0)
         config = builder.create_builder_config()
         config.max_workspace_size = 1 << 32  # 4GB
+        config.flags = (1 << int(trt.BuilderFlag.FP16))
         serialized_engine = builder.build_serialized_network(network, config)
         runtime = trt.Runtime(cls._logger())
         engine = runtime.deserialize_cuda_engine(serialized_engine)

@@ -258,7 +258,7 @@ void indexConv(const GPU& d,
                const Ref1D<Index>& bufferKernelNumHost) {
   static blas::DeviceZeroOne<T> Consts;
   size_t kVol = filters.size(0);
-  size_t inNum = inFeats.size(0);
+  size_t strideBufMM = bufMMIn.size(0) / kVol;
   size_t inNumFeats = inFeats.size(1);
   size_t outNumFeats = outFeats.size(1);
   size_t validBufNum = bufferFromIn.size(0);
@@ -279,8 +279,8 @@ void indexConv(const GPU& d,
       <<<getBlocks(numThreads), CUDA_NUM_THREADS, 0, d.getStream()>>>(bufMMIn, inFeats, bufferFromIn, bufferOffset);
   CHECK_CUDA_ERR();
 
-  size_t strideBufMMIn = inNumFeats * inNum;
-  size_t strideBufMMOut = outNumFeats * inNum;
+  size_t strideBufMMIn = inNumFeats * strideBufMM;
+  size_t strideBufMMOut = outNumFeats * strideBufMM;
   size_t strideFilter = filters.stride(0);
 
   size_t convInNumBest = 0;
@@ -388,193 +388,6 @@ void indexSubM(const GPU& d,
   }
 }
 
-template <size_t FeatsPerThread, class T, class Index>
-void indexConvBP(const GPU& d,
-                 Ref2D<T>& bufMMIn,
-                 Ref2D<T>& bufMMOut,
-                 Ref2D<T>& inFeatsGrad,
-                 Ref3D<T>& filtersGrad,
-                 Ref1D<T>& biasGrad,
-                 const Ref2D<T>& inFeats,
-                 const Ref3D<T>& filters,
-                 const Ref2D<T>& outFeatsGrad,
-                 const Ref1D<Index>& bufferFromIn,
-                 const Ref1D<Index>& bufferToOut,
-                 const Ref1D<Index>& bufferOffset,
-                 const Ref1D<Index>& bufferKernelNumHost) {
-  static blas::DeviceZeroOne<T> Consts;
-  size_t kVol = filters.size(0);
-  size_t inNum = inFeats.size(0);
-  size_t inNumFeats = inFeats.size(1);
-  size_t outNumFeats = outFeatsGrad.size(1);
-  size_t validBufNum = bufferFromIn.size(0);
-
-  if (inFeatsGrad.numel()) cudaMemsetAsync(inFeatsGrad.data(), 0, inFeatsGrad.numel() * sizeof(T), d.getStream());
-
-  if (validBufNum == 0) {
-    if (filtersGrad.numel()) cudaMemsetAsync(filtersGrad.data(), 0, filtersGrad.numel() * sizeof(T), d.getStream());
-    return;
-  }
-
-  size_t strideBufMMIn = inNumFeats * inNum;
-  size_t strideBufMMOut = outNumFeats * inNum;
-  size_t strideFilter = filters.stride(0);
-
-  size_t convInNumBest = 0;
-  for (int i = 0; i < kVol; i++) {
-    auto numBufferKernel = bufferKernelNumHost[i];
-    if (numBufferKernel > convInNumBest) convInNumBest = numBufferKernel;
-  }
-
-  cudaMemset2DAsync(bufMMIn.data(), strideBufMMIn * sizeof(T), 0, inNumFeats * convInNumBest * sizeof(T), kVol,
-                    d.getStream());
-
-  cudaMemset2DAsync(bufMMOut.data(), strideBufMMOut * sizeof(T), 0, outNumFeats * convInNumBest * sizeof(T), kVol,
-                    d.getStream());
-
-  ssize_t numThreads;
-
-  if (!biasGrad.empty()) {
-    // todo : sum over the columns of outFeatsGrad to get the biasGrad. it is
-    //  not calculate currently.
-  }
-
-  numThreads = (validBufNum * outNumFeats + FeatsPerThread - 1) / FeatsPerThread;
-  kernel::gatherFeats<T, Index><<<getBlocks(numThreads), CUDA_NUM_THREADS, 0, d.getStream()>>>(
-      bufMMOut, outFeatsGrad, bufferToOut, bufferOffset);
-  numThreads = (validBufNum * inNumFeats + FeatsPerThread - 1) / FeatsPerThread;
-  kernel::gatherFeats<T, Index>
-      <<<getBlocks(numThreads), CUDA_NUM_THREADS, 0, d.getStream()>>>(bufMMIn, inFeats, bufferFromIn, bufferOffset);
-  CHECK_CUDA_ERR();
-
-  cudaStream_t oldStream;
-  cublasHandle_t cublasHandle = d.getCublasHandle();
-  cublasGetStream(cublasHandle, &oldStream);
-  cublasSetStream(cublasHandle, d.getStream());
-  cublasPointerMode_t oldPtrMode;
-  cublasGetPointerMode(cublasHandle, &oldPtrMode);
-  cublasSetPointerMode(cublasHandle, CUBLAS_POINTER_MODE_DEVICE);
-
-  blas::bMM(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, outNumFeats, inNumFeats, convInNumBest, Consts.onePtr(),
-            bufMMOut.data(), outNumFeats, strideBufMMOut, bufMMIn.data(), inNumFeats, strideBufMMIn, Consts.zeroPtr(),
-            filtersGrad.data(), outNumFeats, strideFilter, kVol);
-
-  blas::bMM(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, inNumFeats, convInNumBest, outNumFeats, Consts.onePtr(),
-            filters.data(), outNumFeats, strideFilter, bufMMOut.data(), outNumFeats, strideBufMMOut, Consts.zeroPtr(),
-            bufMMIn.data(), inNumFeats, strideBufMMIn, kVol);
-
-  cublasSetPointerMode(cublasHandle, oldPtrMode);
-  cublasSetStream(cublasHandle, oldStream);
-
-  numThreads = (validBufNum * outNumFeats + FeatsPerThread - 1) / FeatsPerThread;
-  kernel::atomicReduceFeats<T, Index, reduce::AtomSum<T>>
-      <<<getBlocks(numThreads), CUDA_NUM_THREADS, 0, d.getStream()>>>(inFeatsGrad, bufMMIn, bufferFromIn, bufferOffset);
-  CHECK_CUDA_ERR();
-}
-
-template <size_t FeatsPerThread, class T, class Index>
-void indexSubMBP(const GPU& d,
-                 Ref2D<T>& bufMMIn,
-                 Ref2D<T>& bufMMOut,
-                 Ref2D<T>& inFeatsGrad,
-                 Ref3D<T>& filtersGrad,
-                 Ref1D<T>& biasGrad,
-                 const Ref2D<T>& inFeats,
-                 const Ref3D<T>& filters,
-                 const Ref2D<T>& outFeatsGrad,
-                 const Ref1D<Index>& bufferFromIn,
-                 const Ref1D<Index>& bufferToOut,
-                 const Ref1D<Index>& bufferOffset,
-                 const Ref1D<Index>& bufferKernelNumHost) {
-  static blas::DeviceZeroOne<T> Consts;
-  size_t kVol = filters.size(0);
-  size_t inNum = inFeats.size(0);
-  size_t inNumFeats = inFeats.size(1);
-  size_t outNumFeats = outFeatsGrad.size(1);
-  size_t validBufNum = bufferFromIn.size(0);
-
-  if (validBufNum == 0) {
-    if (inFeatsGrad.numel()) cudaMemsetAsync(inFeatsGrad.data(), 0, inFeatsGrad.numel() * sizeof(T), d.getStream());
-    if (filtersGrad.numel()) cudaMemsetAsync(filtersGrad.data(), 0, filtersGrad.numel() * sizeof(T), d.getStream());
-    return;
-  }
-
-  size_t strideBufMMIn = inNumFeats * inNum;
-  size_t strideBufMMOut = outNumFeats * inNum;
-  size_t strideFilter = filters.stride(0);
-
-  size_t convInNumBest = 0;
-  size_t numBufBeforeCenter = 0;
-  for (int i = 0; i < kVol; i++) {
-    auto numBufferKernel = bufferKernelNumHost[i];
-    if (i < kVol / 2) numBufBeforeCenter += numBufferKernel;
-    if ((i != kVol / 2) && (numBufferKernel > convInNumBest)) convInNumBest = numBufferKernel;
-  }
-
-  if (inNumFeats < outNumFeats) {
-    cudaMemset2DAsync(bufMMIn.data(), strideBufMMIn * sizeof(T), 0, inNumFeats * convInNumBest * sizeof(T), kVol,
-                      d.getStream());
-  } else {
-    cudaMemset2DAsync(bufMMOut.data(), strideBufMMOut * sizeof(T), 0, outNumFeats * convInNumBest * sizeof(T), kVol,
-                      d.getStream());
-  }
-
-  ssize_t numThreads;
-
-  if (!biasGrad.empty()) {
-    // todo : sum over the columns of outFeatsGrad to get the biasGrad. it is
-    //  not calculate currently.
-  }
-
-  numThreads = ((validBufNum - inNum) * outNumFeats + FeatsPerThread - 1) / FeatsPerThread;
-  if (numThreads) {
-    kernel::gatherFeats<T, Index><<<getBlocks(numThreads), CUDA_NUM_THREADS, 0, d.getStream()>>>(
-        bufMMOut, inNum, numBufBeforeCenter, outFeatsGrad, bufferToOut, bufferOffset);
-  }
-  numThreads = ((validBufNum - inNum) * inNumFeats + FeatsPerThread - 1) / FeatsPerThread;
-  if (numThreads) {
-    kernel::gatherFeats<T, Index><<<getBlocks(numThreads), CUDA_NUM_THREADS, 0, d.getStream()>>>(
-        bufMMIn, inNum, numBufBeforeCenter, inFeats, bufferFromIn, bufferOffset);
-  }
-  CHECK_CUDA_ERR();
-
-  cudaStream_t oldStream;
-  cublasHandle_t cublasHandle = d.getCublasHandle();
-  cublasGetStream(cublasHandle, &oldStream);
-  cublasSetStream(cublasHandle, d.getStream());
-  cublasPointerMode_t oldPtrMode;
-  cublasGetPointerMode(cublasHandle, &oldPtrMode);
-  cublasSetPointerMode(cublasHandle, CUBLAS_POINTER_MODE_DEVICE);
-
-  blas::bMM(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, outNumFeats, inNumFeats, convInNumBest, Consts.onePtr(),
-            bufMMOut.data(), outNumFeats, strideBufMMOut, bufMMIn.data(), inNumFeats, strideBufMMIn, Consts.zeroPtr(),
-            filtersGrad.data(), outNumFeats, strideFilter, kVol);
-
-  size_t center = kVol / 2;
-  blas::MM(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, outNumFeats, inNumFeats, bufferKernelNumHost[center],
-           Consts.onePtr(), outFeatsGrad.data(), outNumFeats, inFeats.data(), inNumFeats, Consts.zeroPtr(),
-           &filtersGrad(center, 0, 0), outNumFeats);
-
-  blas::bMM(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, inNumFeats, convInNumBest, outNumFeats, Consts.onePtr(),
-            filters.data(), outNumFeats, strideFilter, bufMMOut.data(), outNumFeats, strideBufMMOut, Consts.zeroPtr(),
-            bufMMIn.data(), inNumFeats, strideBufMMIn, kVol);
-
-  blas::MM(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, inNumFeats, bufferKernelNumHost[center], outNumFeats,
-           Consts.onePtr(), &filters(center, 0, 0), outNumFeats, outFeatsGrad.data(), outNumFeats, Consts.zeroPtr(),
-           inFeatsGrad.data(), inNumFeats);
-
-  cublasSetPointerMode(cublasHandle, oldPtrMode);
-  cublasSetStream(cublasHandle, oldStream);
-
-  numThreads = ((validBufNum - inNum) * outNumFeats + FeatsPerThread - 1) / FeatsPerThread;
-  if (numThreads) {
-    kernel::atomicReduceFeats<T, Index, reduce::AtomSum<T>>
-        <<<getBlocks(numThreads), CUDA_NUM_THREADS, 0, d.getStream()>>>(inFeatsGrad, inNum, numBufBeforeCenter, bufMMIn,
-                                                                        bufferFromIn, bufferOffset);
-  }
-  CHECK_CUDA_ERR();
-}
-
 }  // namespace func
 }  // namespace spconv
 
@@ -586,17 +399,7 @@ void indexSubMBP(const GPU& d,
   template void spconv::func::indexSubM<FeatsPerThread, T, Index>(                                                     \
       const GPU& d, Ref2D<T>& bufMMIn, Ref2D<T>& bufMMOut, Ref2D<T>& outFeats, const Ref2D<T>& inFeats,                \
       const Ref3D<T>& filters, const Ref1D<T>& bias, const Ref1D<Index>& bufferFromIn,                                 \
-      const Ref1D<Index>& bufferToOut, const Ref1D<Index>& bufferOffset, const Ref1D<Index>& bufferKernelNumHost);     \
-  template void spconv::func::indexConvBP<FeatsPerThread, T, Index>(                                                   \
-      const GPU& d, Ref2D<T>& bufMMIn, Ref2D<T>& bufMMOut, Ref2D<T>& inFeatsGrad, Ref3D<T>& filtersGrad,               \
-      Ref1D<T>& biasGrad, const Ref2D<T>& inFeats, const Ref3D<T>& filters, const Ref2D<T>& outFeatsGrad,              \
-      const Ref1D<Index>& bufferFromIn, const Ref1D<Index>& bufferToOut, const Ref1D<Index>& bufferOffset,             \
-      const Ref1D<Index>& bufferKernelNumHost);                                                                        \
-  template void spconv::func::indexSubMBP<FeatsPerThread, T, Index>(                                                   \
-      const GPU& d, Ref2D<T>& bufMMIn, Ref2D<T>& bufMMOut, Ref2D<T>& inFeatsGrad, Ref3D<T>& filtersGrad,               \
-      Ref1D<T>& biasGrad, const Ref2D<T>& inFeats, const Ref3D<T>& filters, const Ref2D<T>& outFeatsGrad,              \
-      const Ref1D<Index>& bufferFromIn, const Ref1D<Index>& bufferToOut, const Ref1D<Index>& bufferOffset,             \
-      const Ref1D<Index>& bufferKernelNumHost)
+      const Ref1D<Index>& bufferToOut, const Ref1D<Index>& bufferOffset, const Ref1D<Index>& bufferKernelNumHost);
 
 SPECIALIZE_CONV(4, double, int);
 SPECIALIZE_CONV(4, float, int);
