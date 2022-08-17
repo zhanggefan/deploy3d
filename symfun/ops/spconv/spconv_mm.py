@@ -3,7 +3,7 @@ import torch
 import numpy as np
 
 
-class SpConvMM(torch.autograd.Function):
+class SPConvMM(torch.autograd.Function):
     """
     /**
      * IO Part:
@@ -63,7 +63,7 @@ class SpConvMM(torch.autograd.Function):
             data += bias.tobytes()
         return g.op('TRT_PluginV2',
                     in_feats, num_act_in, num_act_out, index, index_buf_len,
-                    name_s=b"SpConvMM", data_s=data, namespace_s=b'', version_s=b'2.0', outputs=1)
+                    name_s=b"SPConvMM", data_s=data, namespace_s=b'', version_s=b'2.0', outputs=1)
 
 
-spconv_mm = SpConvMM.apply
+spconv_mm = SPConvMM.apply

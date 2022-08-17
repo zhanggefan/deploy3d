@@ -3,7 +3,7 @@ import torch
 import numpy as np
 
 
-class SpConvIdx3d(torch.autograd.Function):
+class SPConvIdx3d(torch.autograd.Function):
     """
   /**
    * IO Part:
@@ -101,8 +101,8 @@ class SpConvIdx3d(torch.autograd.Function):
         data += np.array([transpose], dtype=np.bool).tobytes()
         return g.op('TRT_PluginV2',
                     in_coors, num_act_in, in_spatial_shape,
-                    name_s=b"SpConvIdx3d", data_s=data, namespace_s=b'',
+                    name_s=b"SPConvIdx3d", data_s=data, namespace_s=b'',
                     version_s=b'2.0', outputs=2 if subm else 5)
 
 
-spconv_index = SpConvIdx3d.apply
+spconv_index = SPConvIdx3d.apply
