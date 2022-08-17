@@ -163,18 +163,10 @@ template <size_t NDim> class SpConvIdxPlugin : public IPluginV2DynamicExt {
   /**
    * Utility Part
    * */
-  AsciiChar const* getPluginType() const NOEXCEPT override {
-    return SpConvIdxPluginConsts<NDim>::name;
-  }
-  AsciiChar const* getPluginVersion() const NOEXCEPT override {
-    return SpConvIdxPluginConsts<NDim>::version;
-  };
-  void setPluginNamespace(AsciiChar const* pluginNamespace) NOEXCEPT override {
-    mNamespace = pluginNamespace;
-  };
-  AsciiChar const* getPluginNamespace() const NOEXCEPT override {
-    return mNamespace;
-  };
+  AsciiChar const* getPluginType() const NOEXCEPT override { return SpConvIdxPluginConsts<NDim>::name; }
+  AsciiChar const* getPluginVersion() const NOEXCEPT override { return SpConvIdxPluginConsts<NDim>::version; };
+  void setPluginNamespace(AsciiChar const* pluginNamespace) NOEXCEPT override { mNamespace = pluginNamespace; };
+  AsciiChar const* getPluginNamespace() const NOEXCEPT override { return mNamespace; };
 
   /**
    * Runtime Part

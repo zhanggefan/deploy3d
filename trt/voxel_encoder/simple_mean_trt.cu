@@ -1,10 +1,10 @@
+#include "common/cub.cuh"
 #include "common/hash32.h"
 #include "common/launch.cuh"
 #include "common/macros.h"
 #include "common/refnd.h"
 #include <NvInfer.h>
 #include <cstring>
-#include <cub/cub.cuh>
 #include <vector>
 
 #define NOEXCEPT noexcept
@@ -112,7 +112,8 @@ constexpr int hashSpace = 2;
 size_t simpleMeanEncoderMalloc(const GPU& d, const size_t numPtsIn) {
   size_t reqBytes = 0;
   ssize_t numElemHash = numPtsIn * hashSpace;
-  cub::DeviceScan::InclusiveSum<int32_t*, int32_t*>(nullptr, reqBytes, nullptr, nullptr, numElemHash, d.getStream());
+  CUB_NS_QUALIFIER::cub::DeviceScan::InclusiveSum<int32_t*, int32_t*>(nullptr, reqBytes, nullptr, nullptr, numElemHash,
+                                                                      d.getStream());
   reqBytes += (3 * numElemHash + 2 * numPtsIn) * sizeof(int32_t);
   return reqBytes;
 }
@@ -153,8 +154,8 @@ void simpleMeanEncoder(const GPU& d,
     kernel::resetHashKernel<kernel::HashTable><<<getBlocks(hash.size()), CUDA_NUM_THREADS, 0, d.getStream()>>>(hash);
     kernel::voxelize<<<getBlocks(numPtsIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         hashSlot, hash, batchPointFeats, batchIndices, voxelConfig, inSpatialShape);
-    cub::DeviceScan::InclusiveSum(workingStoragePtr, workingStorageBytes, hashValue.data(), hashValueIncScan.data(),
-                                  hash.size(), d.getStream());
+    CUB_NS_QUALIFIER::cub::DeviceScan::InclusiveSum(workingStoragePtr, workingStorageBytes, hashValue.data(),
+                                                    hashValueIncScan.data(), hash.size(), d.getStream());
     cudaMemcpyAsync(numActOut, &hashValueIncScan[hashValueIncScan.numel() - 1], sizeof(*numActOut),
                     cudaMemcpyDeviceToDevice, d.getStream());
     kernel::scatterAddFeats<<<getBlocks(numPtsIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(

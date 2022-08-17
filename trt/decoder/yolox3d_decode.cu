@@ -1,6 +1,6 @@
+#include "common/cub.cuh"
 #include "common/launch.cuh"
 #include "common/refnd.h"
-#include "cub/cub.cuh"
 #include "cuda_fp16.h"
 
 #define NOEXCEPT noexcept
@@ -271,10 +271,10 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
       using value_type = float;
 
       size_t workspaceBytes;
-      cub::DeviceSegmentedRadixSort::SortPairsDescending(nullptr, workspaceBytes, static_cast<value_type*>(nullptr),
-                                                         static_cast<value_type*>(nullptr),
-                                                         static_cast<int32_t*>(nullptr), static_cast<int32_t*>(nullptr),
-                                                         sort_num_items, sort_num_segments, seg_begin, seg_end);
+      CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+          nullptr, workspaceBytes, static_cast<value_type*>(nullptr), static_cast<value_type*>(nullptr),
+          static_cast<int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments, seg_begin,
+          seg_end);
       workspaceBytes += sort_num_items * sizeof(value_type);
       workspaceBytes += 2 * sort_num_items * sizeof(int32_t);
       return workspaceBytes;
@@ -282,10 +282,10 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
       using value_type = half;
 
       size_t workspaceBytes;
-      cub::DeviceSegmentedRadixSort::SortPairsDescending(nullptr, workspaceBytes, static_cast<value_type*>(nullptr),
-                                                         static_cast<value_type*>(nullptr),
-                                                         static_cast<int32_t*>(nullptr), static_cast<int32_t*>(nullptr),
-                                                         sort_num_items, sort_num_segments, seg_begin, seg_end);
+      CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+          nullptr, workspaceBytes, static_cast<value_type*>(nullptr), static_cast<value_type*>(nullptr),
+          static_cast<int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments, seg_begin,
+          seg_end);
       workspaceBytes += sort_num_items * sizeof(value_type);
       workspaceBytes += 2 * sort_num_items * sizeof(int32_t);
       return workspaceBytes;
@@ -345,12 +345,12 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
           indices);
 
       size_t cubTempStorageBytes;
-      err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, cubTempStorageBytes, static_cast<const value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<const int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments,
           seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);
-      err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           temp, cubTempStorageBytes, cls_scores.data(), sorted_scores.data(), indices.data(), sorted_indices.data(),
           sort_num_items, sort_num_segments, seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);
@@ -385,12 +385,12 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
           indices);
 
       size_t cubTempStorageBytes;
-      err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, cubTempStorageBytes, static_cast<const value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<const int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments,
           seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);
-      err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           temp, cubTempStorageBytes, cls_scores.data(), sorted_scores.data(), indices.data(), sorted_indices.data(),
           sort_num_items, sort_num_segments, seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);

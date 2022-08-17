@@ -1,17 +1,9 @@
+#include "common/cub.cuh"
 #include "common/hash32.h"
 #include "common/launch.cuh"
 #include "common/macros.h"
 #include "common/refnd.h"
 #include "geometry.h"
-
-#define CUB_NS_PREFIX                                                                                                  \
-  namespace spconv {                                                                                                   \
-  namespace backend {
-#define CUB_NS_POSTFIX                                                                                                 \
-  }                                                                                                                    \
-  }
-#define CUB_NS_QUALIFIER ::spconv::backend
-#include <cub/cub.cuh>
 
 using utils::GPU;
 using utils::launch::CUDA_NUM_THREADS;
