@@ -16,6 +16,33 @@ class ModuleOfFunction(torch.nn.Module):
             return self.torch_fun.apply(*args, *self.config_args)
 
 
+class Profiler(trt.IProfiler):
+    """
+    Example Implimentation of a Profiler
+    Is identical to the Profiler class in trt.infer so it is possible
+    to just use that instead of implementing this if further
+    functionality is not needed
+    """
+    def __init__(self, timing_iter):
+        trt.IProfiler.__init__(self)
+        self.timing_iterations = timing_iter
+        self.profile = []
+
+    def report_layer_time(self, layerName, ms):
+        record = next((r for r in self.profile if r[0] == layerName), (None, None))
+        if record == (None, None):
+            self.profile.append((layerName, ms))
+        else:
+            self.profile[self.profile.index(record)] = (record[0], record[1] + ms)
+
+    def print_layer_times(self):
+        totalTime = 0
+        for i in range(len(self.profile)):
+            print("{:40.40} {:4.3f}ms".format(self.profile[i][0], self.profile[i][1] / self.timing_iterations))
+            totalTime += self.profile[i][1]
+        print("Time over all layers: {:4.2f} ms per iteration".format(totalTime / self.timing_iterations))
+
+
 class TRTPluginModule:
     libraries = []
     logger = None
@@ -80,7 +107,8 @@ class TRTPluginModule:
                           enable_onnx_checker=False,
                           input_names=[f'in_{idx}' for idx in range(
                               len(input_tensors))],
-                          output_names=[f'out_{idx}' for idx in range(num_outputs)])
+                          output_names=[f'out_{idx}' for idx in range(num_outputs)],
+                          opset_version=11)
         builder = trt.Builder(cls._logger())
         network = builder.create_network(
             1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
@@ -90,15 +118,20 @@ class TRTPluginModule:
         config.max_workspace_size = 1 << 32  # 4GB
         config.flags = (1 << int(trt.BuilderFlag.FP16))
         serialized_engine = builder.build_serialized_network(network, config)
+        assert serialized_engine, "cannot serialize engine!"
         runtime = trt.Runtime(cls._logger())
         engine = runtime.deserialize_cuda_engine(serialized_engine)
         context = engine.create_execution_context()
         assert context, "failed to make execution context!"
-
+        # time_infer
+        g_prof = Profiler(1)
+        context.profiler = g_prof
+        
         inputs = cls._malloc(input_tensors)
         outputs = cls._malloc(outputs)
         bindings, mem_holder = cls._to_bindings(context, inputs, outputs)
         context.execute_v2(bindings)
+        g_prof.print_layer_times() # print infer time
         if is_single_tensor:
             return outputs[0]
         else:
