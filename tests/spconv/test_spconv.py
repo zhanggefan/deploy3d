@@ -1,4 +1,4 @@
-from symfun.ops.spconv import SpConvIdx3d, SpConvMM
+from symfun.ops.spconv import SPConvIdx3d, SPConvMM
 from symfun.trt_utils import TRTPluginModule
 import torch
 from spconv.pytorch.ops import get_indice_pairs, indice_conv
@@ -47,7 +47,7 @@ def test_spconv_index():
 
     (index, index_buf_len, out_coors, num_act_out,
      out_spatial_shape) = TRTPluginModule.forward(
-        SpConvIdx3d,
+        SPConvIdx3d,
         input_tensors=(in_coors,
                        num_act_in,
                        in_spatial_shape),
@@ -75,7 +75,7 @@ def test_spconv_index():
     gt_out_feats += bias[None, :].cuda()
 
     out_feats = TRTPluginModule.forward(
-        SpConvMM,
+        SPConvMM,
         input_tensors=(up_feats,
                        num_act_in,
                        num_act_out,

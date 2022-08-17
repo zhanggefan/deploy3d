@@ -19,13 +19,13 @@ using utils::nd::Size;
 using utils::nd::Vec;
 using namespace nvinfer1;
 
-struct SpConvMMPluginConsts {
-  static constexpr const char* name = "SpConvMM";
+struct SPConvMMPluginConsts {
+  static constexpr const char* name = "SPConvMM";
   static constexpr const char* version = "2.0";
 };
 
 #pragma pack(push, 1)
-struct SpConvMMPluginParam {
+struct SPConvMMPluginParam {
   int32_t kernelVol;
   int32_t inChannels;
   int32_t outChannels;
@@ -36,10 +36,10 @@ struct SpConvMMPluginParam {
 };
 #pragma pack(pop)
 
-class SpConvMMPlugin : public IPluginV2DynamicExt {
+class SPConvMMPlugin : public IPluginV2DynamicExt {
  public:
  private:
-  SpConvMMPluginParam p;
+  SPConvMMPluginParam p;
   std::vector<float> wb;
   std::shared_ptr<DeviceVector> wRt;
   std::shared_ptr<DeviceVector> bRt;
@@ -53,8 +53,8 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
   /**
    * Lifecycle Part
    * */
-  SpConvMMPlugin() = delete;
-  SpConvMMPlugin(const SpConvMMPluginParam& param,
+  SPConvMMPlugin() = delete;
+  SPConvMMPlugin(const SPConvMMPluginParam& param,
                  const std::vector<float>& weightAndBias,
                  const std::shared_ptr<DeviceVector>& wRuntime,
                  const std::shared_ptr<DeviceVector>& bRuntime)
@@ -63,7 +63,7 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
     cublasCreate_v2(&cublas);
     cublasSetWorkspace_v2(cublas, cublasWS.data(), cublasWSSize);
   }
-  SpConvMMPlugin(const void* data, size_t length) : cublasWS(cublasWSSize) {
+  SPConvMMPlugin(const void* data, size_t length) : cublasWS(cublasWSSize) {
     SerializeStream s(data, length);
     s >> p;
     wb.resize((length - s.curPos()) / sizeof(float));
@@ -81,7 +81,7 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
     s.dumpRange(wb.begin(), wb.end());
   }
   IPluginV2DynamicExt* clone() const NOEXCEPT override {
-    auto* obj = new SpConvMMPlugin(p, wb, wRt, bRt);
+    auto* obj = new SPConvMMPlugin(p, wb, wRt, bRt);
     obj->setPluginNamespace(mNamespace);
     return obj;
   }
@@ -127,8 +127,8 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
   /**
    * Utility Part
    * */
-  AsciiChar const* getPluginType() const NOEXCEPT override { return SpConvMMPluginConsts::name; }
-  AsciiChar const* getPluginVersion() const NOEXCEPT override { return SpConvMMPluginConsts::version; };
+  AsciiChar const* getPluginType() const NOEXCEPT override { return SPConvMMPluginConsts::name; }
+  AsciiChar const* getPluginVersion() const NOEXCEPT override { return SPConvMMPluginConsts::version; };
   void setPluginNamespace(AsciiChar const* pluginNamespace) NOEXCEPT override { mNamespace = pluginNamespace; };
   AsciiChar const* getPluginNamespace() const NOEXCEPT override { return mNamespace; };
 
@@ -245,16 +245,16 @@ class SpConvMMPlugin : public IPluginV2DynamicExt {
   }
 };
 
-class SpConvMMPluginCreator : public IPluginCreator {
+class SPConvMMPluginCreator : public IPluginCreator {
  private:
   std::string mNamespace;
 
  public:
-  SpConvMMPluginCreator() : mNamespace(""){};
+  SPConvMMPluginCreator() : mNamespace(""){};
 
-  const char* getPluginName() const NOEXCEPT override { return SpConvMMPluginConsts::name; };
+  const char* getPluginName() const NOEXCEPT override { return SPConvMMPluginConsts::name; };
 
-  const char* getPluginVersion() const NOEXCEPT override { return SpConvMMPluginConsts::version; };
+  const char* getPluginVersion() const NOEXCEPT override { return SPConvMMPluginConsts::version; };
 
   const PluginFieldCollection* getFieldNames() NOEXCEPT override {
     return nullptr;  // should not be called when creating TRT_PluginV2
@@ -266,7 +266,7 @@ class SpConvMMPluginCreator : public IPluginCreator {
 
   IPluginV2DynamicExt*
   deserializePlugin(const char* name, const void* serialData, size_t serialLength) NOEXCEPT override {
-    auto* obj = new SpConvMMPlugin(serialData, serialLength);
+    auto* obj = new SPConvMMPlugin(serialData, serialLength);
     obj->setPluginNamespace(mNamespace.c_str());
     return obj;  // the only way when creating TRT_PluginV2
   };
@@ -276,6 +276,6 @@ class SpConvMMPluginCreator : public IPluginCreator {
   const char* getPluginNamespace() const NOEXCEPT override { return mNamespace.c_str(); }
 };
 
-REGISTER_TENSORRT_PLUGIN(SpConvMMPluginCreator);
+REGISTER_TENSORRT_PLUGIN(SPConvMMPluginCreator);
 
 }  // namespace spconv

@@ -18,26 +18,26 @@ using utils::nd::Size;
 using utils::nd::Vec;
 using namespace nvinfer1;
 
-template <size_t NDim> struct SpConvIdxPluginConsts;
-template <> struct SpConvIdxPluginConsts<1> {
-  static constexpr const char* name = "SpConvIdx1d";
+template <size_t NDim> struct SPConvIdxPluginConsts;
+template <> struct SPConvIdxPluginConsts<1> {
+  static constexpr const char* name = "SPConvIdx1d";
   static constexpr const char* version = "2.0";
 };
-template <> struct SpConvIdxPluginConsts<2> {
-  static constexpr const char* name = "SpConvIdx2d";
+template <> struct SPConvIdxPluginConsts<2> {
+  static constexpr const char* name = "SPConvIdx2d";
   static constexpr const char* version = "2.0";
 };
-template <> struct SpConvIdxPluginConsts<3> {
-  static constexpr const char* name = "SpConvIdx3d";
+template <> struct SPConvIdxPluginConsts<3> {
+  static constexpr const char* name = "SPConvIdx3d";
   static constexpr const char* version = "2.0";
 };
-template <> struct SpConvIdxPluginConsts<4> {
-  static constexpr const char* name = "SpConvIdx4d";
+template <> struct SPConvIdxPluginConsts<4> {
+  static constexpr const char* name = "SPConvIdx4d";
   static constexpr const char* version = "2.0";
 };
 
 #pragma pack(push, 1)
-template <size_t NDim> struct SpConvIdxPluginParam {
+template <size_t NDim> struct SPConvIdxPluginParam {
   Vec<NDim, int32_t> kernelSize;
   Vec<NDim, int32_t> stride;
   Vec<NDim, int32_t> padding;
@@ -49,10 +49,10 @@ template <size_t NDim> struct SpConvIdxPluginParam {
 };
 #pragma pack(pop)
 
-template <size_t NDim> class SpConvIdxPlugin : public IPluginV2DynamicExt {
+template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
  public:
  private:
-  SpConvIdxPluginParam<NDim> p;
+  SPConvIdxPluginParam<NDim> p;
   const char* mNamespace;
 
  public:
@@ -61,9 +61,9 @@ template <size_t NDim> class SpConvIdxPlugin : public IPluginV2DynamicExt {
   /**
    * Lifecycle Part
    * */
-  SpConvIdxPlugin() = delete;
-  SpConvIdxPlugin(const SpConvIdxPluginParam<NDim>& param) : p(param) {}
-  SpConvIdxPlugin(const void* data, size_t length) {
+  SPConvIdxPlugin() = delete;
+  SPConvIdxPlugin(const SPConvIdxPluginParam<NDim>& param) : p(param) {}
+  SPConvIdxPlugin(const void* data, size_t length) {
     SerializeStream s(data, length);
     s >> p;
   }
@@ -73,7 +73,7 @@ template <size_t NDim> class SpConvIdxPlugin : public IPluginV2DynamicExt {
     s << p;
   }
   IPluginV2DynamicExt* clone() const NOEXCEPT override {
-    auto* obj = new SpConvIdxPlugin<NDim>(p);
+    auto* obj = new SPConvIdxPlugin<NDim>(p);
     obj->setPluginNamespace(mNamespace);
     return obj;
   }
@@ -163,8 +163,8 @@ template <size_t NDim> class SpConvIdxPlugin : public IPluginV2DynamicExt {
   /**
    * Utility Part
    * */
-  AsciiChar const* getPluginType() const NOEXCEPT override { return SpConvIdxPluginConsts<NDim>::name; }
-  AsciiChar const* getPluginVersion() const NOEXCEPT override { return SpConvIdxPluginConsts<NDim>::version; };
+  AsciiChar const* getPluginType() const NOEXCEPT override { return SPConvIdxPluginConsts<NDim>::name; }
+  AsciiChar const* getPluginVersion() const NOEXCEPT override { return SPConvIdxPluginConsts<NDim>::version; };
   void setPluginNamespace(AsciiChar const* pluginNamespace) NOEXCEPT override { mNamespace = pluginNamespace; };
   AsciiChar const* getPluginNamespace() const NOEXCEPT override { return mNamespace; };
 
@@ -252,16 +252,16 @@ template <size_t NDim> class SpConvIdxPlugin : public IPluginV2DynamicExt {
   }
 };
 
-template <size_t NDim> class SpConvIdxPluginCreator : public IPluginCreator {
+template <size_t NDim> class SPConvIdxPluginCreator : public IPluginCreator {
  private:
   std::string mNamespace;
 
  public:
-  SpConvIdxPluginCreator() : mNamespace(""){};
+  SPConvIdxPluginCreator() : mNamespace(""){};
 
-  const char* getPluginName() const NOEXCEPT override { return SpConvIdxPluginConsts<NDim>::name; };
+  const char* getPluginName() const NOEXCEPT override { return SPConvIdxPluginConsts<NDim>::name; };
 
-  const char* getPluginVersion() const NOEXCEPT override { return SpConvIdxPluginConsts<NDim>::version; };
+  const char* getPluginVersion() const NOEXCEPT override { return SPConvIdxPluginConsts<NDim>::version; };
 
   const PluginFieldCollection* getFieldNames() NOEXCEPT override {
     return nullptr;  // should not be called when creating TRT_PluginV2
@@ -273,7 +273,7 @@ template <size_t NDim> class SpConvIdxPluginCreator : public IPluginCreator {
 
   IPluginV2DynamicExt*
   deserializePlugin(const char* name, const void* serialData, size_t serialLength) NOEXCEPT override {
-    auto* obj = new SpConvIdxPlugin<NDim>(serialData, serialLength);
+    auto* obj = new SPConvIdxPlugin<NDim>(serialData, serialLength);
     obj->setPluginNamespace(mNamespace.c_str());
     return obj;  // the only way when creating TRT_PluginV2
   };
@@ -283,14 +283,14 @@ template <size_t NDim> class SpConvIdxPluginCreator : public IPluginCreator {
   const char* getPluginNamespace() const NOEXCEPT override { return mNamespace.c_str(); }
 };
 
-using SpConvIdx1dPluginCreator = SpConvIdxPluginCreator<1>;
-using SpConvIdx2dPluginCreator = SpConvIdxPluginCreator<2>;
-using SpConvIdx3dPluginCreator = SpConvIdxPluginCreator<3>;
-using SpConvIdx4dPluginCreator = SpConvIdxPluginCreator<4>;
+using SPConvIdx1dPluginCreator = SPConvIdxPluginCreator<1>;
+using SPConvIdx2dPluginCreator = SPConvIdxPluginCreator<2>;
+using SPConvIdx3dPluginCreator = SPConvIdxPluginCreator<3>;
+using SPConvIdx4dPluginCreator = SPConvIdxPluginCreator<4>;
 
-REGISTER_TENSORRT_PLUGIN(SpConvIdx1dPluginCreator);
-REGISTER_TENSORRT_PLUGIN(SpConvIdx2dPluginCreator);
-REGISTER_TENSORRT_PLUGIN(SpConvIdx3dPluginCreator);
-REGISTER_TENSORRT_PLUGIN(SpConvIdx4dPluginCreator);
+REGISTER_TENSORRT_PLUGIN(SPConvIdx1dPluginCreator);
+REGISTER_TENSORRT_PLUGIN(SPConvIdx2dPluginCreator);
+REGISTER_TENSORRT_PLUGIN(SPConvIdx3dPluginCreator);
+REGISTER_TENSORRT_PLUGIN(SPConvIdx4dPluginCreator);
 
 }  // namespace spconv
