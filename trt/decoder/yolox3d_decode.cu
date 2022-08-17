@@ -1,7 +1,8 @@
-#include "common/cub.cuh"
 #include "common/launch.cuh"
 #include "common/refnd.h"
 #include "cuda_fp16.h"
+#include <cub/cub.cuh>
+#define CUB_NS_QUALIFIER
 
 #define NOEXCEPT noexcept
 
