@@ -102,11 +102,11 @@ class InferSpConvModule(torch.nn.Module):
 class ResContextBlock(torch.nn.Module):
     def __init__(self, model, max_num_act_out):
         super(ResContextBlock, self).__init__()
-        self.conv1 = InferSpConvModule(*model.conv1, 'pre_1', max_num_act_out)
+        self.conv1 = InferSpConvModule(*model.conv1, 'res2_1', max_num_act_out)
         self.conv1_2 = InferSpConvModule(
-            *model.conv1_2, 'pre_1_2', max_num_act_out)
-        self.conv2 = InferSpConvModule(*model.conv2, 'pre_2', max_num_act_out)
-        self.conv3 = InferSpConvModule(*model.conv3, 'pre_3', max_num_act_out)
+            *model.conv1_2, 'res1_1', max_num_act_out)
+        self.conv2 = InferSpConvModule(*model.conv2, 'res1_1', max_num_act_out)
+        self.conv3 = InferSpConvModule(*model.conv3, 'res2_1', max_num_act_out)
 
     def forward(self, x):
         shortcut = self.conv1(x)
@@ -123,19 +123,19 @@ class ResContextBlock(torch.nn.Module):
         
 
 class ResBlock(torch.nn.Module):
-    def __init__(self, model, max_num_act_out, stride, indice_key):
+    def __init__(self, model, res_act_out, pool_act_out, stride, indice_key):
         super(ResBlock, self).__init__()
 
         self.conv1 = InferSpConvModule(
-            *model.conv1, 'res1_' + str(stride), max_num_act_out)  # // stride)
+            *model.conv1, 'res1_' + str(stride), res_act_out)
         self.conv1_2 = InferSpConvModule(
-            *model.conv1_2, 'res1_2_' + str(stride), max_num_act_out)  # // stride)
+            *model.conv1_2, 'res2_' + str(stride), res_act_out)
         self.conv2 = InferSpConvModule(
-            *model.conv2, 'res2_' + str(stride), max_num_act_out)  # // stride)
+            *model.conv2, 'res2_' + str(stride), res_act_out)
         self.conv3 = InferSpConvModule(
-            *model.conv3, 'res3_' + str(stride), max_num_act_out)  # // stride)
+            *model.conv3, 'res1_' + str(stride), res_act_out)
         self.pool = InferSpConvModule(
-            model.pool, None, None, indice_key, max_num_act_out)  # // (2 * stride))
+            model.pool, None, None, indice_key, pool_act_out)
 
     def forward(self, x):
         shortcut = self.conv1(x)
@@ -155,19 +155,19 @@ class ResBlock(torch.nn.Module):
 
 
 class UpBlock(torch.nn.Module):
-    def __init__(self, model, max_num_act_out, stride, indice_key):
+    def __init__(self, model, res_act_out, up_act_out, stride, indice_key):
         super(UpBlock, self).__init__()
 
         self.trans_dilao = InferSpConvModule(
-            *model.trans_dilao, 'up_td_' + str(stride), max_num_act_out)  # // stride)
+            *model.trans_dilao, 'trans_dilao_' + str(stride), res_act_out)
         self.conv1 = InferSpConvModule(
-            *model.conv1, 'up_1_' + str(stride), max_num_act_out)  # // stride)
+            *model.conv1, 'res2_' + str(stride), up_act_out)
         self.conv2 = InferSpConvModule(
-            *model.conv2, 'up_2_' + str(stride), max_num_act_out)  # // stride)
+            *model.conv2, 'res1_' + str(stride), up_act_out)
         self.conv3 = InferSpConvModule(
-            *model.conv3, 'up_3_' + str(stride), max_num_act_out)  # // stride)
+            *model.conv3, 'up3_' + str(stride), up_act_out)
         self.up_subm = InferSpConvModule(
-            model.up_subm, None, None, indice_key, max_num_act_out)  # // (stride / 2))
+            model.up_subm, None, None, indice_key, up_act_out)
 
     def forward(self, x, skip):
         upA = self.trans_dilao(x)
@@ -191,11 +191,11 @@ class ReconBlock(torch.nn.Module):
         super(ReconBlock, self).__init__()
 
         self.conv1 = InferSpConvModule(
-            model.conv1[0][0], model.conv1[0][1], model.conv1[1], 'rec_1', max_num_act_out)
+            model.conv1[0][0], model.conv1[0][1], model.conv1[1], 'rec1', max_num_act_out)
         self.conv1_2 = InferSpConvModule(
-            model.conv1_2[0][0], model.conv1_2[0][1], model.conv1_2[1], 'rec_1_2', max_num_act_out)
+            model.conv1_2[0][0], model.conv1_2[0][1], model.conv1_2[1], 'rec1_2', max_num_act_out)
         self.conv1_3 = InferSpConvModule(
-            model.conv1_3[0][0], model.conv1_3[0][1], model.conv1_3[1], 'rec_1_3', max_num_act_out)
+            model.conv1_3[0][0], model.conv1_3[0][1], model.conv1_3[1], 'rec1_3', max_num_act_out)
 
     def forward(self, x):
         shortcut = self.conv1(x)
@@ -213,34 +213,34 @@ class ReconBlock(torch.nn.Module):
 
 
 class MiddleEncoder(torch.nn.Module):
-    def __init__(self, middle_encoder, max_num_act_out, num_layers):
+    def __init__(self, middle_encoder, max_num_act_out, num_layers): # max_num_act_out = [131072, 65536, 32768, 16384]
         super(MiddleEncoder, self).__init__()
 
         self.downCntx = ResContextBlock(
-            middle_encoder.downCntx, max_num_act_out)
+            middle_encoder.downCntx, max_num_act_out[0])
 
         indice_keys = []
         resBlocks = torch.nn.ModuleList()
-        for i in range(num_layers):  # i = 0, 1, 2, 3, stride = 1, 2, 4, 8
+        for i in range(num_layers):  # i = 0, 1, 2; stride = 1, 2, 4
             stride = pow(2, i)
             indice_key = 'res_pool_' + str(stride)
             indice_keys.append(indice_key)
             resBlocks.append(
-                ResBlock(middle_encoder.resBlocks[i], max_num_act_out, stride, indice_key))
+                ResBlock(middle_encoder.resBlocks[i], max_num_act_out[i], max_num_act_out[i+1], stride, indice_key))
         self.resBlocks = resBlocks
 
         upBlocks = torch.nn.ModuleList()
-        for i in range(num_layers):  # i = 0, 1, 2, 3, stride = 8, 4, 2, 1
+        for i in range(num_layers):  # i = 0, 1, 2; stride = 4, 2, 1
             indice_key = indice_keys.pop()
-            stride = pow(2, num_layers - i)
+            stride = pow(2, num_layers - i - 1)
             upBlocks.append(
-                UpBlock(middle_encoder.upBlocks[i], max_num_act_out, stride, indice_key))
+                UpBlock(middle_encoder.upBlocks[i], max_num_act_out[num_layers - i], max_num_act_out[num_layers - i - 1], stride, indice_key))
         self.upBlocks = upBlocks
 
-        self.ReconNet = ReconBlock(middle_encoder.ReconNet, max_num_act_out)
+        self.ReconNet = ReconBlock(middle_encoder.ReconNet, max_num_act_out[0])
 
         self.logits = InferSpConvModule(
-            middle_encoder.logits, None, None, 'logits', max_num_act_out)
+            middle_encoder.logits, None, None, 'logits', max_num_act_out[0])
 
     def forward(self, in_feats, in_coors, num_act_in, in_spatial_shape):
         index_dict = dict()
@@ -303,10 +303,10 @@ class InferModel(torch.nn.Module):
     def __init__(self, model, num_layers, max_num_act_out, reduce_type):
         super(InferModel, self).__init__() 
         self.reduce_type = reduce_type
-        self.pfn = PointFeatureNet(model.pts_voxel_encoder, max_num_act_out, reduce_type)
+        self.pfn = PointFeatureNet(model.pts_voxel_encoder, max_num_act_out[0], reduce_type)
         self.pts_middle_encoder = MiddleEncoder(model.pts_middle_encoder, max_num_act_out, num_layers)
     
-    def forward(self, batch_point_feats, batch_indices, cylinder_config, in_spatial_shape, num_act_in):       
+    def forward(self, batch_point_feats, batch_indices, cylinder_config, in_spatial_shape):       
         voxel_feats, out_coors, num_act_out, scatter_index = self.pfn(batch_point_feats,
                                                                       batch_indices,
                                                                       cylinder_config,
@@ -315,7 +315,7 @@ class InferModel(torch.nn.Module):
         
         logits = self.pts_middle_encoder(voxel_feats,
                                          out_coors,
-                                         num_act_in,
+                                         num_act_out,
                                          in_spatial_shape)      
         
         
@@ -328,25 +328,28 @@ class InferModel(torch.nn.Module):
 def pfn_correct(labels):
     voxel_feats = labels[0]
     out_coors = labels[1]
+    num_act_out = labels[2]
     voxel_feats_gt, out_coors_gt = torch.load('/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0812_spconv2.x/cylinder3d_pfn_features.pth')
-    out_coors_tuple = [tuple(c) for c in out_coors.tolist()]
+    out_coors_tuple = [tuple(c) for c in out_coors[:num_act_out].tolist()]
     gt_coors_tuple = [tuple(c) for c in out_coors_gt.tolist()]
     gt_coors_dict = {c: idx for idx, c in enumerate(gt_coors_tuple)}
     permute_index = torch.tensor([gt_coors_dict[c]
                                  for c in out_coors_tuple], dtype=torch.long)
-    assert torch.allclose(voxel_feats_gt[permute_index].cpu(), voxel_feats.cpu(), atol=1e-2, rtol=1e-2)
+    assert torch.allclose(voxel_feats_gt.cpu()[permute_index], voxel_feats.cpu()[:num_act_out], atol=1e-2, rtol=1e-2)
     torch.save(permute_index, '/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0812_spconv2.x/pred_to_gt.pth')
 
 
 def downc_correct(labels):
     pred_to_gt_index = torch.load('/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0812_spconv2.x/pred_to_gt.pth')
+    num_act_out = pred_to_gt_index.shape[0]
     target = torch.load('/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0812_spconv2.x/cylinder3d_middle_encoder_downc.pth')
-    assert torch.allclose(labels.float().cpu(), target.features[pred_to_gt_index].float().cpu(), atol=1e-1, rtol=1e-1)
+    assert torch.allclose(labels.float().cpu()[:num_act_out], target.features.float().cpu()[pred_to_gt_index], atol=1e-1, rtol=1e-1)
 
 
-def res_up_correct(labels, out_coors, indices):
-    target = torch.load('')
+def res_up_correct(labels):
+    target = torch.load('cylinder3d_middle_encoder_features.pth')
     
+    out_coors = labels[1]
     num_act_out = labels[2]
     indices = target.indices
     out_coors = out_coors[:num_act_out]
@@ -362,10 +365,17 @@ def res_up_correct(labels, out_coors, indices):
     ), target.features[permute_indexs].float().cpu(), atol=1e-1, rtol=1e-1)
 
 
-def whole_correct(labels):
+def cylinder3d_correct(labels):
     target = torch.load('/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0812_spconv2.x/pts_labels_target.pth')
     wrong_nums = np.where(labels.cpu() != target.cpu())[0].shape
-    assert torch.allclose(labels.float().cpu(), target.float().cpu(), atol=1e-1, rtol=1e-1)    
+    print('wrong_nums are : ', wrong_nums)
+
+
+def middle_encoder_correct(labels):
+    pred_to_gt_index = torch.load('/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0812_spconv2.x/pred_to_gt.pth')
+    num_act_out = pred_to_gt_index.shape[0]
+    target = torch.load('/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0812_spconv2.x/cylinder3d_middle_encoder_features.pth')
+    assert torch.allclose(labels.float().cpu()[:num_act_out], target.features.float().cpu()[pred_to_gt_index], atol=1e-1, rtol=1e-1)     
 
 
 def test_cylinder3d():
@@ -377,8 +387,8 @@ def test_cylinder3d():
     cylinder_config = torch.tensor([-2, -np.pi, 0, 4, np.pi, 50])
     
     num_layers = 3
-    max_num_act_out = 102124
     reduce_type = 0 # max
+    max_num_act_out = [131072, 65536, 32768, 16384] # [102124, 64857, 21810, 11491]
     
     model = torch.load(
         '/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0812_spconv2.x/cylinder3d.pth')
@@ -387,20 +397,46 @@ def test_cylinder3d():
     cylinder3d.eval()
     cylinder3d.float()
 
+    export_onnx = False
+    if export_onnx:
+        torch.onnx.export(
+            cylinder3d,
+            (batch_point_feats.float(), 
+             batch_indices,
+             cylinder_config,
+             in_spatial_shape),
+            'cylinder3d.onnx',
+            verbose=False,
+            opset_version=11,
+            enable_onnx_checker=False,
+            keep_initializers_as_inputs=True,
+            input_names=['batch_point_feats', 'batch_indices', 'cylinder_config', 'in_spatial_shape'],
+            output_names=['logits'],
+            dynamic_axes={
+            'batch_point_feats': {0: 'n'},
+            'batch_indices': {0: 'n'},
+            'in_spatial_shape': {0: 'b'},
+            'logits': {0:'n'},
+            }
+        )
+        
+        return    
+    
+    
+    
     labels = TRTPluginModule.forward(cylinder3d,
                                      input_tensors=(batch_point_feats.float(),
                                                     batch_indices,
                                                     cylinder_config,
-                                                    in_spatial_shape,
-                                                    torch.tensor(
-                                                        [max_num_act_out], dtype=torch.int32))
+                                                    in_spatial_shape)
                                                     )
     
     # pfn_correct(labels)
     # downc_correct(labels)
-    whole_correct(labels)
-    
-    # torch.hstack((batch_point_feats, labels))
+    # middle_encoder_correct(labels)
+    cylinder3d_correct(labels)
+
+
 
 
 test_cylinder3d()
