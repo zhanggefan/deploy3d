@@ -1,8 +1,7 @@
+#include "common/cub.cuh"
 #include "common/launch.cuh"
 #include "common/refnd.h"
-#include "cuda_fp16.h"
-#include <cub/cub.cuh>
-#define CUB_NS_QUALIFIER
+#include "cuda_fp16.hpp"
 
 #define NOEXCEPT noexcept
 
@@ -22,14 +21,6 @@ using utils::nd::Vec;
 using namespace nvinfer1;
 
 namespace kernel {
-
-template <typename T> DEVICE_INLINE float cast2float(const T& x) {
-  return static_cast<float>(x);
-}
-
-DEVICE_INLINE float cast2float(const half& x) {
-  return __half2float(x);
-}
 
 template <typename T, typename classIdx_T>
 __global__ void decode(Ref2D<int32_t> topk_class_ids,
@@ -62,27 +53,27 @@ __global__ void decode(Ref2D<int32_t> topk_class_ids,
 
     score = sorted_scores(b, class_i, rank);
 
-    cx = cast2float(*pred_box) + x_base;
+    cx = float(*pred_box) + x_base;
     bool cx_valid = (cx <= bbox_preds.size(3) && cx >= 0);
     cx = x_min + feat_stride * cx;
     pred_box += box_param_stride;
-    cy = cast2float(*pred_box) + y_base;
+    cy = float(*pred_box) + y_base;
     bool cy_valid = (cy <= bbox_preds.size(2) && cy >= 0);
     cy = y_min + feat_stride * cy;
     pred_box += box_param_stride;
-    cz = cast2float(*pred_box);
+    cz = float(*pred_box);
     pred_box += box_param_stride;
-    dx = feat_stride * exp(cast2float(*pred_box));
+    dx = feat_stride * exp(float(*pred_box));
     pred_box += box_param_stride;
-    dy = feat_stride * exp(cast2float(*pred_box));
+    dy = feat_stride * exp(float(*pred_box));
     pred_box += box_param_stride;
-    dz = exp(cast2float(*pred_box));
+    dz = exp(float(*pred_box));
     pred_box += box_param_stride;
-    yaw = cast2float(*pred_box);
+    yaw = float(*pred_box);
     pred_box += box_param_stride;
-    dir_sine = cast2float(*pred_box);
+    dir_sine = float(*pred_box);
     pred_box += box_param_stride;
-    dir_cosine = cast2float(*pred_box);
+    dir_cosine = float(*pred_box);
 
     float dir = atan2(dir_sine, dir_cosine);
     bool yaw_valid = ((dir_sine != 0) || (dir_cosine != 0));
