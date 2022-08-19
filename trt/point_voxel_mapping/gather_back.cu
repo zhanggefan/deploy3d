@@ -18,37 +18,57 @@ using utils::nd::fromTensorRT;
 using utils::nd::Ref1D;
 using utils::nd::Ref2D;
 using utils::nd::Ref3D;
+using utils::nd::RefND;
 using utils::nd::Size;
 using utils::nd::Vec;
 using namespace nvinfer1;
 
 namespace kernel {
 
-template <class T>
-__global__ void gatherFeats(Ref2D<T> outFeats,  // [numPtsIn, P]
-                            const Ref2D<const T> inFeats,  // [maxNumActOut, P]
-                            const Ref1D<const int32_t> scatterIndex)  // [numPtsIn]
+template <int N, class T>
+__global__ void gatherFeats(RefND<N, T> outFeats,  // [numPtsIn, P]
+                            const RefND<N, const T> inFeats,  // [maxNumActOut, P]
+                            const Ref1D<const int32_t> scatterIndex,
+                            const bool fill,
+                            const T fillVal)  // [numPtsIn]
 {
   auto numPtsIn = outFeats.size(0);
-  auto numFeats = outFeats.size(1);
+  auto numFeats = outFeats.stride(0);
   for (size_t ix : KernelLoopX(numPtsIn)) {
     int voxelIdx = scatterIndex(ix);
-    if (voxelIdx < 0) continue;
-    for (int j = 0; j < numFeats; j++) { outFeats(ix, j) = inFeats(voxelIdx, j); }
+    auto offsetOutFeats = &outFeats[ix * numFeats];
+    if (voxelIdx < 0) {
+      if (fill) {
+        for (int j = 0; j < numFeats; j++) { offsetOutFeats[j] = fillVal; }
+      }
+      continue;
+    }
+    auto offsetInFeats = &inFeats[voxelIdx * numFeats];
+    for (int j = 0; j < numFeats; j++) { offsetOutFeats[j] = offsetInFeats[j]; }
   }
 }
 }  // namespace kernel
 
 namespace func {
-template <class T>
+template <int N, class T>
 void gatherBack(const GPU& d,
-                Ref2D<T> outFeats,
-                const Ref2D<const T> inFeats,
-                const Ref1D<const int32_t> scatterIndex) {
+                RefND<N, T> outFeats,
+                const RefND<N, const T> inFeats,
+                const Ref1D<const int32_t> scatterIndex,
+                const bool fill = false,
+                const T fillVal = T(0)) {
   auto numPtsIn = outFeats.size(0);
-  kernel::gatherFeats<<<getBlocks(numPtsIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, inFeats, scatterIndex);
+  kernel::gatherFeats<N, T>
+      <<<getBlocks(numPtsIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, inFeats, scatterIndex, fill, fillVal);
 }
 }  // namespace func
+
+#pragma pack(push, 1)
+struct GatherBackPluginParam {
+  bool fill;
+  float fillVal;
+};
+#pragma pack(pop)
 
 struct GatherBackPluginConsts {
   static constexpr const char* name = "GatherBack";
@@ -57,15 +77,23 @@ struct GatherBackPluginConsts {
 
 class GatherBackPlugin : public IPluginV2DynamicExt {
  private:
+  GatherBackPluginParam p;
   const char* mNamespace;
 
  public:
   GatherBackPlugin() = delete;
-  GatherBackPlugin(const void* data, size_t length){};
-  size_t getSerializationSize() const NOEXCEPT override { return 0; }
-  void serialize(void* buffer) const NOEXCEPT override{};
+  GatherBackPlugin(const GatherBackPluginParam& param) : p(param) {}
+  GatherBackPlugin(const void* data, size_t length) {
+    SerializeStream s(data, length);
+    s >> p;
+  }
+  size_t getSerializationSize() const NOEXCEPT override { return sizeof(p); }
+  void serialize(void* buffer) const NOEXCEPT override {
+    SerializeStream s(buffer);
+    s << p;
+  }
   IPluginV2DynamicExt* clone() const NOEXCEPT override {
-    auto* obj = new GatherBackPlugin(nullptr, 0);
+    auto* obj = new GatherBackPlugin(p);
     obj->setPluginNamespace(mNamespace);
     return obj;
   }
@@ -76,17 +104,19 @@ class GatherBackPlugin : public IPluginV2DynamicExt {
   /**
    * IO Part:
    *    Input:
-   *        0: reducedFeats         [float]     [mMaxNumActOut, inChannels]
+   *        0: reducedFeats         [float]     [mMaxNumActOut, ...]
    *        1: scatterTo            [int32]     [mMaxNumActIn]
    *    Output:
-   *        0: batchPointFeats      [float]     [mMaxNumActIn, inChannels]
+   *        0: batchPointFeats      [float]     [mMaxNumActIn, ...]
    * */
   int32_t getNbOutputs() const NOEXCEPT override { return 1; };
   DimsExprs getOutputDimensions(int32_t outputIndex,
                                 const DimsExprs* inputs,
                                 int32_t nbInputs,
                                 IExprBuilder& exprBuilder) NOEXCEPT override {
-    return {2, {inputs[1].d[0], inputs[0].d[1]}};
+    auto output = inputs[0];
+    output.d[0] = inputs[1].d[0];
+    return output;
   }
   DataType getOutputDataType(int32_t index, DataType const* inputTypes, int32_t nbInputs) const NOEXCEPT override {
     return inputTypes[0];
@@ -131,15 +161,25 @@ class GatherBackPlugin : public IPluginV2DynamicExt {
     /**
      * IO Part:
      *    Input:
-     *        0: reducedFeats         [float]     [mMaxNumActOut, inChannels]
+     *        0: reducedFeats         [float]     [mMaxNumActOut, ...]
      *        1: scatterTo            [int32]     [mMaxNumActIn]
      *    Output:
-     *        0: batchPointFeats      [float]     [mMaxNumActIn, inChannels]
+     *        0: batchPointFeats      [float]     [mMaxNumActIn, ...]
      * */
-    Ref2D<const float> inFeats = fromTensorRT<2, const float>(inputs[0], inputDesc[0]);
-    Ref1D<const int32_t> scatterIndex = fromTensorRT<1, const int32_t>(inputs[1], inputDesc[1]);
-    Ref2D<float> outFeats = fromTensorRT<2, float>(outputs[0], outputDesc[0]);
-    func::gatherBack<float>(utils::GPU(), outFeats, inFeats, scatterIndex);
+    switch (inputDesc[0].dims.nbDims) {
+    case 1: {
+      Ref1D<const float> inFeats = fromTensorRT<1, const float>(inputs[0], inputDesc[0]);
+      Ref1D<const int32_t> scatterIndex = fromTensorRT<1, const int32_t>(inputs[1], inputDesc[1]);
+      Ref1D<float> outFeats = fromTensorRT<1, float>(outputs[0], outputDesc[0]);
+      func::gatherBack<1, float>(utils::GPU(), outFeats, inFeats, scatterIndex, p.fill, p.fillVal);
+    } break;
+    default: {
+      Ref2D<const float> inFeats = fromTensorRT<2, const float>(inputs[0], inputDesc[0]);
+      Ref1D<const int32_t> scatterIndex = fromTensorRT<1, const int32_t>(inputs[1], inputDesc[1]);
+      Ref2D<float> outFeats = fromTensorRT<2, float>(outputs[0], outputDesc[0]);
+      func::gatherBack<2, float>(utils::GPU(), outFeats, inFeats, scatterIndex, p.fill, p.fillVal);
+    } break;
+    }
     return 0;
   };
 };
