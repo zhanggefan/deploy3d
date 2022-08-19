@@ -61,26 +61,24 @@ __global__ void cylinderize(Ref1D<int32_t> hashSlot,  // [numPtsIn]
         auto zCoors = static_cast<int32_t>((z - zMin) / zSize);
         auto phiCoors = static_cast<int32_t>((phi - phiMin) / phiSize);
         auto rhoCoors = static_cast<int32_t>((rho - rhoMin) / rhoSize);
-        zCoors = zCoors < 0 ? 0 : zCoors;
-        phiCoors = phiCoors < 0 ? 0 : phiCoors;
-        rhoCoors = rhoCoors < 0 ? 0 : rhoCoors;
-        zCoors = zCoors >= zDim ? (zDim - 1) : zCoors;
-        phiCoors = phiCoors >= phiDim ? (phiDim - 1) : phiCoors;
-        rhoCoors = rhoCoors >= rhoDim ? (rhoDim - 1) : rhoCoors;
-        ptsCoors[3] = zCoors;
-        ptsCoors[2] = phiCoors;
-        ptsCoors[1] = rhoCoors;
-        hashSlot[ix] = hash.insert(inSpatialShape.template offset(ptsCoors), 1);
+        if ((phiCoors >= 0) && (phiCoors < phiDim) && (rhoCoors >= 0) && (rhoCoors < rhoDim)) {
+          zCoors = zCoors < 0 ? 0 : zCoors;
+          zCoors = zCoors >= zDim ? (zDim - 1) : zCoors;
+          ptsCoors[3] = zCoors;
+          ptsCoors[2] = phiCoors;
+          ptsCoors[1] = rhoCoors;
+          hashSlot[ix] = hash.insert(inSpatialShape.template offset(ptsCoors), 1);
 
-        ptsAugFeats[0] = z;
-        ptsAugFeats[1] = phi;
-        ptsAugFeats[2] = rho;
-        ptsAugFeats[3] = z - ((zCoors + T(0.5)) * zSize + zMin);
-        ptsAugFeats[4] = phi - ((phiCoors + T(0.5)) * phiSize + phiMin);
-        ptsAugFeats[5] = rho - ((rhoCoors + T(0.5)) * rhoSize + rhoMin);
-        ptsAugFeats[6] = x;
-        ptsAugFeats[7] = y;
-        for (int i = 3; i < numFeats; i++) { ptsAugFeats[i + 5] = ptsFeats[i]; }
+          ptsAugFeats[0] = z;
+          ptsAugFeats[1] = phi;
+          ptsAugFeats[2] = rho;
+          ptsAugFeats[3] = z - ((zCoors + T(0.5)) * zSize + zMin);
+          ptsAugFeats[4] = phi - ((phiCoors + T(0.5)) * phiSize + phiMin);
+          ptsAugFeats[5] = rho - ((rhoCoors + T(0.5)) * rhoSize + rhoMin);
+          ptsAugFeats[6] = x;
+          ptsAugFeats[7] = y;
+          for (int i = 3; i < numFeats; i++) { ptsAugFeats[i + 5] = ptsFeats[i]; }
+        }
       }
     }
   }
