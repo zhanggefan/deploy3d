@@ -391,7 +391,7 @@ def test_cylinder3d():
     max_num_act_out = [131072, 65536, 32768, 16384] # [102124, 64857, 21810, 11491]
     
     model = torch.load(
-        '/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0812_spconv2.x/cylinder3d.pth')
+        '/deepdata/cc_work_dirs/3d/cylinder3d_semantic_cowa_debug/0819_spconv2.x/cylinder3d.pth')
     cylinder3d = InferModel(model, num_layers, max_num_act_out, reduce_type).cuda()
     cylinder3d = revert_sync_batchnorm(cylinder3d)
     cylinder3d.eval()
@@ -411,12 +411,12 @@ def test_cylinder3d():
             enable_onnx_checker=False,
             keep_initializers_as_inputs=True,
             input_names=['batch_point_feats', 'batch_indices', 'cylinder_config', 'in_spatial_shape'],
-            output_names=['logits'],
+            output_names=['batch_point_labels'],
             dynamic_axes={
             'batch_point_feats': {0: 'n'},
             'batch_indices': {0: 'n'},
             'in_spatial_shape': {0: 'b'},
-            'logits': {0:'n'},
+            'batch_point_labels': {0:'n'},
             }
         )
         
