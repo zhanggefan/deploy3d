@@ -1,5 +1,5 @@
-from symfun.ops.spconv import SPConvIdx3d, SPConvMM
-from symfun.trt_utils import TRTPluginModule
+from deploy3d.symfun.ops.spconv import SPConvIdx3d, SPConvMM
+from deploy3d.symfun.trt_utils import TRTPluginModule
 import torch
 from spconv.pytorch.ops import get_indice_pairs, indice_conv
 from spconv.pytorch.core import ConvAlgo

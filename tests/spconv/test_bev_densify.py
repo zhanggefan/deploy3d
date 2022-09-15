@@ -1,5 +1,5 @@
-from symfun.ops.spconv import BEVDensify
-from symfun.trt_utils import TRTPluginModule
+from deploy3d.symfun.ops.spconv import BEVDensify
+from deploy3d.symfun.trt_utils import TRTPluginModule
 import torch
 
 

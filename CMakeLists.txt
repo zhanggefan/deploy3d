@@ -1,7 +1,10 @@
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.10)
     project(deploy3d CXX)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/libs)
+    if (NOT DEFINED CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+        message("CMAKE_LIBRARY_OUTPUT_DIRECTORY set to ${CMAKE_CURRENT_SOURCE_DIR}/deploy3d/libs")
+        set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/deploy3d/libs)
+    endif ()
 endif ()
 
 add_subdirectory(trt)

@@ -1,7 +1,7 @@
 import torch
 import numpy as np
-from symfun.ops.spconv import spconv_mm, spconv_index
-from symfun.trt_utils import TRTPluginModule
+from deploy3d.symfun.ops.spconv import spconv_mm, spconv_index
+from deploy3d.symfun.trt_utils import TRTPluginModule
 from mmcv.cnn.utils import revert_sync_batchnorm
 
 

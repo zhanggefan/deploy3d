@@ -1,5 +1,5 @@
-from symfun.ops.decoder import NMS3d
-from symfun.trt_utils import TRTPluginModule
+from deploy3d.symfun.ops.decoder import NMS3d
+from deploy3d.symfun.trt_utils import TRTPluginModule
 import numpy as np
 import torch
 from mmcv.ops.nms import nms_rotated

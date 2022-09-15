@@ -1,10 +1,10 @@
 import torch
 import numpy as np
-from symfun.ops.voxel_encoder import cylinder_encoder
-from symfun.ops.spconv import spconv_mm, spconv_index
-from symfun.ops.point_voxel_mapping import scatter_to, gather_back
+from deploy3d.symfun.ops.voxel_encoder import cylinder_encoder
+from deploy3d.symfun.ops.spconv import spconv_mm, spconv_index
+from deploy3d.symfun.ops.point_voxel_mapping import scatter_to, gather_back
 
-from symfun.trt_utils import TRTPluginModule
+from deploy3d.symfun.trt_utils import TRTPluginModule
 from mmcv.cnn.utils import revert_sync_batchnorm
 
 

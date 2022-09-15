@@ -1,5 +1,5 @@
-from symfun.ops.voxel_encoder import CylinderEncoder
-from symfun.trt_utils import TRTPluginModule
+from deploy3d.symfun.ops.voxel_encoder import CylinderEncoder
+from deploy3d.symfun.trt_utils import TRTPluginModule
 import torch
 import numpy as np
 
@@ -33,12 +33,21 @@ def _cylinder(max_num_act_out):
     gt_coors = gt_coors_f.int()
     gt_coor_z, gt_coor_phi, gt_coor_rho = gt_coors.split(1, -1)
     gt_coor_z.clamp_(0, size[0] - 1)
-    gt_coor_phi.clamp_(0, size[1] - 1)
-    gt_coor_rho.clamp_(0, size[2] - 1)
+    # gt_coor_phi.clamp_(0, size[1] - 1)
+    # gt_coor_rho.clamp_(0, size[2] - 1)
+    valid = torch.ones_like(gt_coor_z, dtype=torch.bool)
+    valid = valid.logical_and(gt_coor_z >= 0).logical_and(gt_coor_z < size[0])
+    valid = valid.logical_and(gt_coor_phi >= 0).logical_and(gt_coor_phi < size[1])
+    valid = valid.logical_and(gt_coor_rho >= 0).logical_and(gt_coor_rho < size[2])
     gt_coors = torch.cat([batch_indices.unsqueeze(-1),
                           gt_coor_rho, gt_coor_phi, gt_coor_z], dim=-1)
+    gt_coors[valid.logical_not().squeeze()] = -1
     gt_coors, gt_scatter_to, gt_counts = gt_coors.unique(sorted=True, return_inverse=True,
                                                          return_counts=True, dim=0)
+    if (gt_coors[0] == -1).all():
+        gt_coors = gt_coors[1:]
+        gt_counts = gt_counts[1:]
+        gt_scatter_to -= 1
 
     gt_pts_ctr = (torch.cat([gt_coor_z, gt_coor_phi,
                              gt_coor_rho], dim=-1) + 0.5) * step + minimum
