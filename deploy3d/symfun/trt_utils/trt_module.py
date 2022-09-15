@@ -3,6 +3,7 @@ import torch.onnx
 import glob
 import ctypes
 import io
+import pathlib
 
 
 class ModuleOfFunction(torch.nn.Module):
@@ -56,7 +57,8 @@ class TRTPluginModule:
     @classmethod
     def _load_libraries(cls):
         if len(cls.libraries) == 0:
-            libs = glob.glob('libs/*.so')
+            libs_path = pathlib.Path(__file__).parents[2].joinpath('libs/*.so')
+            libs = glob.glob(libs_path.as_posix())
             for lib in libs:
                 cls.libraries.append(ctypes.CDLL(lib))
             trt.init_libnvinfer_plugins(cls._logger(), '')
@@ -131,7 +133,7 @@ class TRTPluginModule:
         outputs = cls._malloc(outputs)
         bindings, mem_holder = cls._to_bindings(context, inputs, outputs)
         context.execute_v2(bindings)
-        g_prof.print_layer_times() # print infer time
+        g_prof.print_layer_times()  # print infer time
         if is_single_tensor:
             return outputs[0]
         else:

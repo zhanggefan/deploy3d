@@ -1,5 +1,5 @@
-from symfun.ops.decoder import YoloX3dDecode
-from symfun.trt_utils import TRTPluginModule
+from deploy3d.symfun.ops.decoder import YoloX3dDecode
+from deploy3d.symfun.trt_utils import TRTPluginModule
 import torch
 
 

@@ -1,5 +1,5 @@
-from symfun.ops.voxel_encoder import SimpleMeanEncoder
-from symfun.trt_utils import TRTPluginModule
+from deploy3d.symfun.ops.voxel_encoder import SimpleMeanEncoder
+from deploy3d.symfun.trt_utils import TRTPluginModule
 import torch
 import torch_scatter
 

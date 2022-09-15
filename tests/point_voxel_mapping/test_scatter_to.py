@@ -1,5 +1,5 @@
-from symfun.ops.point_voxel_mapping import ScatterTo
-from symfun.trt_utils import TRTPluginModule
+from deploy3d.symfun.ops.point_voxel_mapping import ScatterTo
+from deploy3d.symfun.trt_utils import TRTPluginModule
 import torch
 import torch_scatter
 
