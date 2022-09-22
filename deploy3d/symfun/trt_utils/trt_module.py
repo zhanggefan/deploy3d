@@ -110,7 +110,7 @@ class TRTPluginModule:
                           input_names=[f'in_{idx}' for idx in range(
                               len(input_tensors))],
                           output_names=[f'out_{idx}' for idx in range(num_outputs)],
-                          opset_version=11)
+                          opset_version=9)
         builder = trt.Builder(cls._logger())
         network = builder.create_network(
             1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))

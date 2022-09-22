@@ -292,7 +292,7 @@ class PointFeatureNet(torch.nn.Module):
             voxel_feats = scatter_to(
                 point_feats, scatter_index, scatter_count, self.reduce_type)
             if i != len(self.pfn_layers) - 1:
-                feat_per_point = gather_back(voxel_feats, scatter_index)
+                feat_per_point = gather_back(voxel_feats, scatter_index, 0.0)
                 pts_feats = torch.cat([point_feats, feat_per_point], dim=1)
 
         voxel_feats = self.post_reduce_layers(voxel_feats)
@@ -319,7 +319,7 @@ class InferModel(torch.nn.Module):
                                          in_spatial_shape)      
         
         
-        logits = gather_back(logits, scatter_index)
+        logits = gather_back(logits, scatter_index, 0.0)
         logits = torch.argmax(logits, dim=1).int()
         
         return logits # (N,)
@@ -407,7 +407,7 @@ def test_cylinder3d():
              in_spatial_shape),
             'cylinder3d.onnx',
             verbose=False,
-            opset_version=11,
+            opset_version=9,
             enable_onnx_checker=False,
             keep_initializers_as_inputs=True,
             input_names=['batch_point_feats', 'batch_indices', 'cylinder_config', 'in_spatial_shape'],
