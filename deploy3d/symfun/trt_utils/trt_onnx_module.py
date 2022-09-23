@@ -5,22 +5,30 @@ import glob
 import ctypes
 import io, os
 import pathlib
+import hashlib
 import numpy as np
-from functools import partial
+import configparser
 
 
 class TRTOnnxModule:
     libraries = []
     logger = None
-
-    def __init__(self, onnx_file):
+    input_names = ('batch_point_feats',
+                   'batch_indices',
+                   'voxel_config',
+                   'in_spatial_shape')
+    
+    def __init__(self, onnx_file, config_path, yaml_file):
         self.engine = None
         self.onnx_file = onnx_file
-        
         self.sensor_signals = ['x', 'y', 'z', 'intensity']
-        self.sensors = [0, 1, 2]
-        self.point_radius_range = [0, 76.8]
-        self.max_pts = 480000
+        
+        config = self.read_cfg(config_path)
+        self.input_sizes = self.get_input_size(config, self.input_names)
+        
+        params = self.parse_yaml(yaml_file, onnx_file)
+        self.sensors = params['sensors'][0]
+        self.score_threshold = params['score_threshold']
         
         cls_id = torch.zeros((1, 1536), dtype=torch.int32)
         score = torch.zeros((1, 1536), dtype=torch.float32)
@@ -28,6 +36,45 @@ class TRTOnnxModule:
         self.outputs = [cls_id, score, bboxes]
         
         self._load_libraries()
+    
+    def read_cfg(self, config_path):
+        conf = configparser.ConfigParser()
+        with open(config_path, 'r') as f:
+            buf = f.read()
+            buf = '[default]\n' + buf
+        conf.read_string(buf)
+            
+        config = conf['default']
+        return config
+    
+    def get_input_size(self, config, input_names):
+        size = eval(config['size'])[0]
+        size_min = eval(config['size_min'])[0]
+        size_max = eval(config['size_max'])[0]
+        
+        input_sizes = {input_names[idx]: dict(size=tuple(size[idx]),
+                                              size_min=tuple(size_min[idx]),
+                                              size_max=tuple(size_max[idx])) 
+                             for idx, input_name in enumerate(input_names)}
+        
+        self.max_pts = input_sizes['batch_indices']['size'][0]
+        
+        return input_sizes
+    
+    def parse_yaml(self, yaml_file, onnx_file):
+        import yaml
+        from yaml.loader import SafeLoader
+
+        with open(yaml_file) as f:
+            data = yaml.load(f, Loader=SafeLoader)
+        
+        prefix = os.path.splitext(os.path.split(onnx_file)[-1])[0]
+        if 'ruby' in prefix:
+            key = 'lidardetruby'
+        else:
+            key = 'lidardetouster'
+        params = data['LidarPerception'][key]
+        return params
     
     def _logger(self):
         if self.logger is None:
@@ -85,7 +132,11 @@ class TRTOnnxModule:
         return bindings, mem_holder
 
     def build_engine(self, onnx_file):
-        engine_file = os.path.splitext(onnx_file)[0] + '.engine'
+        cache_path = '/root/.cache'
+        prefix = os.path.splitext(os.path.split(onnx_file)[-1])[0]
+        engine_name = hashlib.md5(prefix.encode()).hexdigest()
+        
+        engine_file = os.path.join(cache_path, engine_name + '.engine')
         if not os.path.exists(engine_file):
             builder = trt.Builder(self._logger())
             network = builder.create_network(
@@ -97,10 +148,9 @@ class TRTOnnxModule:
             config.flags = (1 << int(trt.BuilderFlag.FP16))
             
             profile = builder.create_optimization_profile()
-            profile.set_shape("batch_point_feats", (480000, 4), (480000, 4), (480000, 4))
-            profile.set_shape("batch_indices", (480000,), (480000,), (480000,))
-            profile.set_shape("voxel_config", (6,), (6,), (6,))
-            profile.set_shape("in_spatial_shape", (1, 0, 41, 1536, 1536), (1, 0, 41, 1536, 1536), (2, 0, 41, 1536, 1536))
+            for name in self.input_names:
+                in_size = self.input_sizes[name]
+                profile.set_shape(name, in_size['size_min'], in_size['size_min'], in_size['size_max'])
             config.add_optimization_profile(profile)
 
             serialized_engine = builder.build_serialized_network(network, config)
@@ -120,19 +170,14 @@ class TRTOnnxModule:
         assert context, "failed to make execution context!"
         
         context.active_optimization_profile = 0
-        context.set_binding_shape(0, (480000, 4))
-        context.set_binding_shape(1, (480000,))
-        context.set_binding_shape(2, (6,))
-        context.set_binding_shape(3, (1, 0, 41, 1536, 1536))
+        
+        for idx, name in enumerate(self.input_names):
+            in_size = self.input_sizes[name]
+            if name == 'in_spatial_shape':
+                in_size['size'] = tuple([1] + list(in_size['size'][1:])) # for yolox3d onnx infer, bs always be 1
+            context.set_binding_shape(idx, in_size['size'])
         
         return context
-
-    def radius_range_filter(self, points):
-        min_range, max_range = self.point_radius_range
-        distance = np.linalg.norm(points[:, :2], ord=2, axis=-1)
-        range_mask = (distance > min_range) & (distance < max_range)
-        points = points[range_mask]
-        return points
 
     def load_points(self, pts_file):
         pts = np.load(pts_file)
@@ -149,7 +194,6 @@ class TRTOnnxModule:
             sig_vals.append(sig_val)
         pts = np.stack(sig_vals, axis=-1)
         
-        pts = self.radius_range_filter(pts)
         return pts
 
     def forward(self, pts_file):
@@ -185,9 +229,18 @@ class TRTOnnxModule:
         
         self.context.execute_v2(bindings)
         
-        # post process
-        _, scores, bboxes = outputs
+        # 4. post process
+        bboxes = self.post_process(outputs)
+        return bboxes
+    
+    def post_process(self, outputs):
+        cls_ids, scores, bboxes = outputs
+        cls_ids, scores, bboxes = cls_ids.squeeze(), scores.squeeze(), bboxes.squeeze()
+        cls_ids, scores, bboxes = cls_ids.cpu().numpy(), scores.cpu().numpy(), bboxes.cpu().numpy()
         
-        mask = (scores.squeeze() > 0)
-        bboxes = bboxes.squeeze()[mask]
-        return bboxes.cpu().numpy()
+        mask = np.zeros(cls_ids.shape[0], dtype=np.bool)
+        for label_id, _ in enumerate(self.score_threshold):
+            cls_mask = (cls_ids == label_id) & (scores >= self.score_threshold[label_id])
+            mask += cls_mask
+        bboxes = bboxes[mask]
+        return bboxes
