@@ -26,6 +26,12 @@ class TRTOnnxModule:
         config = self.read_cfg(config_path)
         self.input_sizes = self.get_input_size(config, self.input_names)
         
+        self.max_pts = self.input_sizes['batch_indices']['size'][0]
+        
+        sp_size = self.input_sizes['in_spatial_shape']['size']
+        self.voxel_config = torch.tensor([-51.2, -(sp_size[-2] / 20), -2, 0.1, 0.1, 0.15]) # (6,) [xmin, ymin, zmin, dx, dy, dz]
+        self.in_spatial_shape = torch.empty(sp_size, dtype=torch.int32) # (1, 0, z, y, x)
+        
         params = self.parse_yaml(yaml_file, onnx_file)
         self.sensors = params['sensors'][0]
         self.score_threshold = params['score_threshold']
@@ -52,13 +58,13 @@ class TRTOnnxModule:
         size_min = eval(config['size_min'])[0]
         size_max = eval(config['size_max'])[0]
         
-        input_sizes = {input_names[idx]: dict(size=tuple(size[idx]),
-                                              size_min=tuple(size_min[idx]),
-                                              size_max=tuple(size_max[idx])) 
+        input_sizes = {input_name: dict(size=tuple(size[idx]),
+                                        size_min=tuple(size_min[idx]),
+                                        size_max=tuple(size_max[idx])) 
                              for idx, input_name in enumerate(input_names)}
         
-        self.max_pts = input_sizes['batch_indices']['size'][0]
-        
+        value = input_sizes['in_spatial_shape']['size']
+        input_sizes['in_spatial_shape']['size'] = tuple([1] + list(value[1:])) # for yolox3d onnx infer, bs always be 1
         return input_sizes
     
     def parse_yaml(self, yaml_file, onnx_file):
@@ -73,6 +79,7 @@ class TRTOnnxModule:
             key = 'lidardetruby'
         else:
             key = 'lidardetouster'
+            self.sensor_signals.extend(['value'])
         params = data['LidarPerception'][key]
         return params
     
@@ -170,11 +177,9 @@ class TRTOnnxModule:
         assert context, "failed to make execution context!"
         
         context.active_optimization_profile = 0
-        
-        for idx, name in enumerate(self.input_names):
+        for name in self.input_names:
             in_size = self.input_sizes[name]
-            if name == 'in_spatial_shape':
-                in_size['size'] = tuple([1] + list(in_size['size'][1:])) # for yolox3d onnx infer, bs always be 1
+            idx = engine.get_binding_index(name)
             context.set_binding_shape(idx, in_size['size'])
         
         return context
@@ -218,8 +223,8 @@ class TRTOnnxModule:
         
         batch_point_feats = torch.from_numpy(points) # (n, f)
         batch_indices = torch.zeros(batch_point_feats.shape[0], dtype=torch.int32) # (n,)
-        voxel_config = torch.tensor([-76.8, -76.8, -2, 0.1, 0.1, 0.15]) # (6,) [xmin, ymin, zmin, dx, dy, dz]
-        in_spatial_shape = torch.empty((1, 0, 41, 1536, 1536), dtype=torch.int32) # (1, 0, z, y, x)
+        voxel_config = self.voxel_config
+        in_spatial_shape = self.in_spatial_shape
         input_tensors = [batch_point_feats, batch_indices, voxel_config, in_spatial_shape]
         
         # 3. run infer
