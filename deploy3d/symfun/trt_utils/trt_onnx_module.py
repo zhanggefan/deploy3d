@@ -243,9 +243,12 @@ class TRTOnnxModule:
         cls_ids, scores, bboxes = cls_ids.squeeze(), scores.squeeze(), bboxes.squeeze()
         cls_ids, scores, bboxes = cls_ids.cpu().numpy(), scores.cpu().numpy(), bboxes.cpu().numpy()
         
+        labels = -1 * np.ones(cls_ids.shape[0], dtype=np.uint8)
         mask = np.zeros(cls_ids.shape[0], dtype=np.bool)
         for label_id, _ in enumerate(self.score_threshold):
             cls_mask = (cls_ids == label_id) & (scores >= self.score_threshold[label_id])
+            labels[cls_mask] = label_id
             mask += cls_mask
         bboxes = bboxes[mask]
-        return bboxes
+        labels = labels[mask]
+        return np.concatenate([labels[:, None], bboxes], axis=-1)
