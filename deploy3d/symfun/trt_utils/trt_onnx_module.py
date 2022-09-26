@@ -7,12 +7,13 @@ import hashlib
 import numpy as np
 import yaml
 import os.path as osp
+import os
 
 
 class TRTOnnxModule:
     libraries = []
     logger = None
-    cache = '~/.cache'
+    cache = '~/.cache/deploy3d'
 
     @staticmethod
     def _map_dtype(dtype):
@@ -30,27 +31,32 @@ class TRTOnnxModule:
         num_profiles = self.engine.num_optimization_profiles
         num_bindings_per_profile = self.engine.num_bindings // num_profiles
         if self.bindings is None:
-            self.bindings = [0 for _ in range(num_bindings_per_profile * num_profiles)]
+            self.bindings = [0 for _ in range(
+                num_bindings_per_profile * num_profiles)]
         if self.bindings_tensor is None:
-            self.bindings_tensor = [None for _ in range(num_bindings_per_profile * num_profiles)]
+            self.bindings_tensor = [None for _ in range(
+                num_bindings_per_profile * num_profiles)]
         if self.active_bindings is None:
             self.active_bindings = dict()
         if self.mem_holder is None:
-            self.mem_holder = [None for _ in range(num_bindings_per_profile * num_profiles)]
+            self.mem_holder = [None for _ in range(
+                num_bindings_per_profile * num_profiles)]
         for _io_idx in range(num_bindings_per_profile):
             io_idx = _io_idx + profile_idx * num_bindings_per_profile
             io_name = self.context.engine.get_binding_name(_io_idx)
             io_shape = torch.Size(self.context.get_binding_shape(io_idx))
-            io_dtype = TRTOnnxModule._map_dtype(self.context.engine.get_binding_dtype(io_idx))
+            io_dtype = TRTOnnxModule._map_dtype(
+                self.context.engine.get_binding_dtype(io_idx))
             if self.bindings[io_idx] == 0 or self.bindings_tensor[io_idx].shape != io_shape or self.bindings_tensor[
-                io_idx].dtype != io_dtype:  # not malloc yet or need re-allocate
+                    io_idx].dtype != io_dtype:  # not malloc yet or need re-allocate
                 if torch.Size(io_shape).numel() == 0:
                     tensor = torch.empty([1], dtype=io_dtype, device='cuda')
                     self.mem_holder[io_idx] = tensor
                     self.bindings_tensor[io_idx] = tensor[:0].view(io_shape)
                     self.bindings[io_idx] = tensor.data_ptr()
                 else:
-                    tensor = torch.empty(io_shape, dtype=io_dtype, device='cuda')
+                    tensor = torch.empty(
+                        io_shape, dtype=io_dtype, device='cuda')
                     self.mem_holder[io_idx] = tensor
                     self.bindings_tensor[io_idx] = tensor
                     self.bindings[io_idx] = tensor.data_ptr()
@@ -78,12 +84,13 @@ class TRTOnnxModule:
         with open(model_cfg, 'rb') as f:
             model_cfg_bin = f.read()
         engine_name = hashlib.md5(model_onnx_bin + model_cfg_bin).hexdigest()
-        engine_file = osp.expanduser(osp.join(TRTOnnxModule.cache, engine_name + '.engine'))
+        engine_file = osp.expanduser(
+            osp.join(TRTOnnxModule.cache, engine_name + '.engine'))
 
         if not osp.exists(engine_file):
             with trt.Builder(self._logger()) as builder, builder.create_network(
-                    1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)) as network, trt.OnnxParser(
-                network, self._logger()) as parser:
+                1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)) as network, trt.OnnxParser(
+                    network, self._logger()) as parser:
                 assert parser.parse_from_file(model_onnx), parser.get_error(0)
                 config = builder.create_builder_config()
                 config.max_workspace_size = 1 << 32  # 4GB
@@ -104,8 +111,11 @@ class TRTOnnxModule:
                         profile.set_shape(in_name, in_min, in_opt, in_max)
                     config.add_optimization_profile(profile)
 
-                serialized_engine = builder.build_serialized_network(network, config)
+                serialized_engine = builder.build_serialized_network(
+                    network, config)
                 assert serialized_engine, "cannot serialize engine!"
+                os.makedirs(osp.expanduser(
+                    osp.join(TRTOnnxModule.cache)), exist_ok=True)
                 with open(engine_file, 'wb') as f:
                     f.write(serialized_engine)
 
@@ -133,7 +143,8 @@ class TRTOnnxModule:
         for profile_idx in range(num_profiles):
             profile_match_st = []
             for in_name, in_shape in in_shapes.items():
-                in_min, in_opt, in_max = self.engine.get_profile_shape(profile_idx, in_name)
+                in_min, in_opt, in_max = self.engine.get_profile_shape(
+                    profile_idx, in_name)
                 if tuple(in_shape) == tuple(in_opt):
                     profile_match_st.append(2)  # optimum
                     continue
@@ -144,9 +155,11 @@ class TRTOnnxModule:
                     profile_match_st.append(0)  # invalid
             profile_match_st = min(profile_match_st)
             if profile_match_st == 2:
-                self.context.set_optimization_profile_async(profile_idx, self.stream.cuda_stream)
+                self.context.set_optimization_profile_async(
+                    profile_idx, self.stream.cuda_stream)
                 for in_name, in_shape in in_shapes.items():
-                    in_idx = self.engine.get_binding_index(in_name) + profile_idx * num_bindings_per_profile
+                    in_idx = self.engine.get_binding_index(
+                        in_name) + profile_idx * num_bindings_per_profile
                     self.context.set_binding_shape(in_idx, in_shape)
                 assert self.context.all_binding_shapes_specified, 'not all dynamic binding shapes specified!'
                 self._prepare_io()
@@ -156,9 +169,11 @@ class TRTOnnxModule:
         profiles_match_st = profiles_match_st[profile_idx]
         if profiles_match_st == 0:
             raise RuntimeError('dynamic input shape invalid!')
-        self.context.set_optimization_profile_async(profile_idx, self.stream.cuda_stream)
+        self.context.set_optimization_profile_async(
+            profile_idx, self.stream.cuda_stream)
         for in_name, in_shape in in_shapes.items():
-            in_idx = self.engine.get_binding_index(in_name) + profile_idx * num_bindings_per_profile
+            in_idx = self.engine.get_binding_index(
+                in_name) + profile_idx * num_bindings_per_profile
             self.context.set_binding_shape(in_idx, in_shape)
         assert self.context.all_binding_shapes_specified, 'not all dynamic binding shapes specified!'
         self._prepare_io()

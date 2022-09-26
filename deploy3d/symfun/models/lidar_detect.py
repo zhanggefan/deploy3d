@@ -16,7 +16,8 @@ class LidarDetRuby(TRTOnnxModule):
 
     def __init__(self, onnx_folder):
         super(LidarDetRuby, self).__init__(onnx_folder)
-        self.active_bindings['voxel_config'][:] = torch.tensor(self.voxel_config)
+        self.active_bindings['voxel_config'][:] = torch.tensor(
+            self.voxel_config)
 
     def _read_pts(self, points):
         if isinstance(points, str) and points.endswith('.npy'):
@@ -53,21 +54,25 @@ class LidarDetRuby(TRTOnnxModule):
             dtype=self.active_bindings['batch_point_feats'].dtype)
         self.active_bindings['batch_indices'][:num_points] = torch.from_numpy(batch_indices)[:num_points].to(
             dtype=self.active_bindings['batch_point_feats'].dtype)
+        self.active_bindings['batch_indices'][num_points:] = -1
 
     def postprocess(self, points):
         cls_ids, scores, bboxes = (
             self.active_bindings['cls'], self.active_bindings['score'], self.active_bindings['box'])
         cls_ids, scores, bboxes = cls_ids.squeeze(), scores.squeeze(), bboxes.squeeze()
-        cls_ids, scores, bboxes = cls_ids.cpu().numpy(), scores.cpu().numpy(), bboxes.cpu().numpy()
+        cls_ids, scores, bboxes = cls_ids.cpu().numpy(
+        ), scores.cpu().numpy(), bboxes.cpu().numpy()
 
         out_labels = []
         out_scores = []
         out_bboxes = []
         for label_id, _ in enumerate(self.score_threshold):
-            cls_mask = (cls_ids == label_id) & (scores >= self.score_threshold[label_id])
+            cls_mask = (cls_ids == label_id) & (
+                scores >= self.score_threshold[label_id])
             out_scores.append(scores[cls_mask])
             out_bboxes.append(bboxes[cls_mask])
-            out_labels.append([self.classes[label_id] for _ in range(out_scores[-1].shape[0])])
+            out_labels.append([self.classes[label_id]
+                              for _ in range(out_scores[-1].shape[0])])
 
         out_bboxes = np.concatenate(out_bboxes, axis=0)
         out_scores = np.concatenate(out_scores, axis=0)
