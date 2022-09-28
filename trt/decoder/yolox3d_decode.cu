@@ -263,7 +263,7 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
       using value_type = float;
 
       size_t workspaceBytes;
-      CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, workspaceBytes, static_cast<value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments, seg_begin,
           seg_end);
@@ -274,7 +274,7 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
       using value_type = half;
 
       size_t workspaceBytes;
-      CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, workspaceBytes, static_cast<value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments, seg_begin,
           seg_end);
@@ -337,12 +337,12 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
           indices);
 
       size_t cubTempStorageBytes;
-      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, cubTempStorageBytes, static_cast<const value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<const int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments,
           seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);
-      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           temp, cubTempStorageBytes, cls_scores.data(), sorted_scores.data(), indices.data(), sorted_indices.data(),
           sort_num_items, sort_num_segments, seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);
@@ -377,12 +377,12 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
           indices);
 
       size_t cubTempStorageBytes;
-      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, cubTempStorageBytes, static_cast<const value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<const int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments,
           seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);
-      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           temp, cubTempStorageBytes, cls_scores.data(), sorted_scores.data(), indices.data(), sorted_indices.data(),
           sort_num_items, sort_num_segments, seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);

@@ -250,26 +250,26 @@ size_t createSparseConvIndexMalloc(const GPU& d,
   cudaError_t status;
 
   for (size_t scale = oneTimeMalloc ? 1 : outElemNumMaxPower2; scale <= outElemNumMaxPower2; scale = scale << 1) {
-    status = CUB_NS_QUALIFIER::cub::DeviceSelect::If<mkU<Index>*, Index*, Index*, Valid>(
+    status = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSelect::If<mkU<Index>*, Index*, Index*, Valid>(
         nullptr, reqBytes_, nullptr, nullptr, nullptr, scale, Valid(), d.getStream());
     CHECK_RETURN_STATUS(status);
     reqBytes = reqBytes > reqBytes_ ? reqBytes : reqBytes_;
 
-    status = CUB_NS_QUALIFIER::cub::DeviceRunLengthEncode::Encode<Index*, Index*, Index*, Index*>(
+    status = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceRunLengthEncode::Encode<Index*, Index*, Index*, Index*>(
         nullptr, reqBytes_, nullptr, nullptr, nullptr, nullptr, scale, d.getStream());
     CHECK_RETURN_STATUS(status);
     reqBytes = reqBytes > reqBytes_ ? reqBytes : reqBytes_;
   }
 
   for (size_t scale = oneTimeMalloc ? 1 : numElemHash; scale <= numElemHash; scale = scale << 1) {
-    status = CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(nullptr, reqBytes_, nullptr, nullptr,
-                                                                             numElemHash, d.getStream());
+    status = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(
+        nullptr, reqBytes_, nullptr, nullptr, numElemHash, d.getStream());
     CHECK_RETURN_STATUS(status);
     reqBytes = reqBytes > reqBytes_ ? reqBytes : reqBytes_;
   }
 
-  status = CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(nullptr, reqBytes_, nullptr, nullptr, kVol,
-                                                                           d.getStream());
+  status = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(nullptr, reqBytes_, nullptr,
+                                                                                    nullptr, kVol, d.getStream());
   CHECK_RETURN_STATUS(status);
   reqBytes = reqBytes > reqBytes_ ? reqBytes : reqBytes_;
 
@@ -369,7 +369,7 @@ void createSparseConvIndex(const GPU& d,
     //      -> {output idx}
     //   numOutPtr: number of output coors
     //   coorsOut: output coors
-    CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(
+    DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(
         workingStoragePtr, workingStorageBytes, hashValues.data(), uniqueIndex.data(), hash.size(), d.getStream());
     kernel::coorsOutOrganizeKernel<NDim, Index><<<getBlocks(hash.size()), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         coorsOut, numOutPtr, hash, uniqueIndex, outSpatialShape, numSample);
@@ -404,17 +404,17 @@ void createSparseConvIndex(const GPU& d,
     cudaMemsetAsync(bufferOffsetPad.data(), 0xFF, outElemNumMaxPower2 * sizeof(Index), d.getStream());
     cudaMemsetAsync(bufferKernelNum.data(), 0x00, kVol * sizeof(Index), d.getStream());
 
-    CUB_NS_QUALIFIER::cub::DeviceSelect::If<mkU<Index>*, Index*, Index*, Valid>(
+    DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSelect::If<mkU<Index>*, Index*, Index*, Valid>(
         workingStoragePtr, workingStorageBytes, hashOutPos.data(), bufferFromInPad.data(), numBufPtr,
         outElemNumMaxPower2, Valid(), d.getStream());
     kernel::indexOrganizeKernel<Index><<<getBlocks(kVol * numActIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         bufferFromIn, bufferToOut, bufferOffsetPad, numBufPtr, bufferFromInPad, hashOut);
-    CUB_NS_QUALIFIER::cub::DeviceRunLengthEncode::Encode<Index*, Index*, Index*, Index*>(
+    DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceRunLengthEncode::Encode<Index*, Index*, Index*, Index*>(
         workingStoragePtr, workingStorageBytes, bufferOffsetPad.data(), bufferKernelOffsetRLE.data(),
         bufferKernelNumRLE.data(), numRLEPtr, outElemNumMaxPower2, d.getStream());
     kernel::bufferKernelNumOrganizeKernel<Index><<<getBlocks(kVol), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         bufferKernelNum, numRLEPtr, bufferKernelNumRLE, bufferKernelOffsetRLE);
-    CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(
+    DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(
         workingStoragePtr, workingStorageBytes, bufferKernelNum.data(), bufferKernelNumRLE.data(), kVol, d.getStream());
     kernel::bufferKernelOffsetOrganizeKernel<Index><<<getBlocks(kVol * numActIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         bufferOffset, bufferOffsetPad, numActIn, numBufPtr, bufferKernelNumRLE);
@@ -436,19 +436,19 @@ size_t createSparseSubMIndexMalloc(const GPU& d,
 
   cudaError_t status;
   for (size_t scale = oneTimeMalloc ? 1 : outElemNumMaxPower2; scale <= outElemNumMaxPower2; scale = scale << 1) {
-    status = CUB_NS_QUALIFIER::cub::DeviceSelect::If<mkU<Index>*, Index*, Index*, Valid>(
+    status = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSelect::If<mkU<Index>*, Index*, Index*, Valid>(
         nullptr, reqBytes_, nullptr, nullptr, nullptr, scale, Valid(), d.getStream());
     CHECK_RETURN_STATUS(status);
     reqBytes = reqBytes > reqBytes_ ? reqBytes : reqBytes_;
 
-    status = CUB_NS_QUALIFIER::cub::DeviceRunLengthEncode::Encode<Index*, Index*, Index*, Index*>(
+    status = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceRunLengthEncode::Encode<Index*, Index*, Index*, Index*>(
         nullptr, reqBytes_, nullptr, nullptr, nullptr, nullptr, scale, d.getStream());
     CHECK_RETURN_STATUS(status);
     reqBytes = reqBytes > reqBytes_ ? reqBytes : reqBytes_;
   }
 
-  status = CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(nullptr, reqBytes_, nullptr, nullptr, kVol,
-                                                                           d.getStream());
+  status = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(nullptr, reqBytes_, nullptr,
+                                                                                    nullptr, kVol, d.getStream());
   CHECK_RETURN_STATUS(status);
   reqBytes = reqBytes > reqBytes_ ? reqBytes : reqBytes_;
 
@@ -528,17 +528,17 @@ void createSparseSubMIndex(const GPU& d,
     cudaMemsetAsync(bufferOffsetPad.data(), 0xFF, outElemNumMaxPower2 * sizeof(Index), d.getStream());
     cudaMemsetAsync(bufferKernelNum.data(), 0x00, kVol * sizeof(Index), d.getStream());
 
-    CUB_NS_QUALIFIER::cub::DeviceSelect::If<mkU<Index>*, Index*, Index*, Valid>(
+    DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSelect::If<mkU<Index>*, Index*, Index*, Valid>(
         workingStoragePtr, workingStorageBytes, hashOutPos.data(), bufferFromInPad.data(), numBufPtr,
         outElemNumMaxPower2, Valid(), d.getStream());
     kernel::indexOrganizeKernel<Index><<<getBlocks(kVol * numActIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         bufferFromIn, bufferToOut, bufferOffsetPad, numBufPtr, bufferFromInPad, hashOut);
-    CUB_NS_QUALIFIER::cub::DeviceRunLengthEncode::Encode<Index*, Index*, Index*, Index*>(
+    DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceRunLengthEncode::Encode<Index*, Index*, Index*, Index*>(
         workingStoragePtr, workingStorageBytes, bufferOffsetPad.data(), bufferKernelOffsetRLE.data(),
         bufferKernelNumRLE.data(), numRLEPtr, outElemNumMaxPower2, d.getStream());
     kernel::bufferKernelNumOrganizeKernel<Index><<<getBlocks(kVol), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         bufferKernelNum, numRLEPtr, bufferKernelNumRLE, bufferKernelOffsetRLE);
-    CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(
+    DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceScan::ExclusiveSum<Index*, Index*>(
         workingStoragePtr, workingStorageBytes, bufferKernelNum.data(), bufferKernelNumRLE.data(), kVol, d.getStream());
     kernel::bufferKernelOffsetOrganizeKernel<Index><<<getBlocks(kVol * numActIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         bufferOffset, bufferOffsetPad, numActIn, numBufPtr, bufferKernelNumRLE);
