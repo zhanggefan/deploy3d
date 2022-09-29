@@ -55,9 +55,12 @@ DEVICE_INLINE float iou3d(const float* box_a, const float* box_b) {
   return v_overlap / fmaxf(va + vb - v_overlap, iou_rotated::EPS);
 }
 
-__global__ void
-overlap_matrix_kernel(const float* boxes, uint64_t* overlapMatrix, const int nbBox, const float nmsOverlapThreshold) {
-  // params: boxes (N, 7) [cx, cy, cz, dx, dy, dz, angle]
+__global__ void overlap_matrix_kernel(const float* boxes,
+                                      uint64_t* overlapMatrix,
+                                      const int nbBox,
+                                      const int nbBoxDim,
+                                      const float nmsOverlapThreshold) {
+  // params: boxes (N, 7 + a) [cx, cy, cz, dx, dy, dz, angle]
   // params: overlapMatrix (N, N/THREADS_PER_BLOCK_NMS)
   const int nbOverlapHashBlocks = DivUp(nbBox, THREADS_PER_BLOCK_NMS);
   const int b = blockIdx.x;
@@ -66,7 +69,7 @@ overlap_matrix_kernel(const float* boxes, uint64_t* overlapMatrix, const int nbB
 
   if (row_start > col_start) return;
 
-  const float* boxesOffset = boxes + b * nbBox * 7;
+  const float* boxesOffset = boxes + b * nbBox * nbBoxDim;
   uint64_t* overlapMatrixOffset = overlapMatrix + b * nbBox * nbOverlapHashBlocks;
 
   const int cur_row = row_start * THREADS_PER_BLOCK_NMS + threadIdx.x;
@@ -77,7 +80,7 @@ overlap_matrix_kernel(const float* boxes, uint64_t* overlapMatrix, const int nbB
   __shared__ float block_boxes[THREADS_PER_BLOCK_NMS * 7];
 
   if (cur_col < nbBox) {
-    const float* from = boxesOffset + cur_col * 7;
+    const float* from = boxesOffset + cur_col * nbBoxDim;
     float* to = block_boxes + threadIdx.x * 7;
     to[0] = from[0];
     to[1] = from[1];
@@ -90,7 +93,7 @@ overlap_matrix_kernel(const float* boxes, uint64_t* overlapMatrix, const int nbB
   __syncthreads();
 
   if (cur_row < nbBox) {
-    const float* cur_box = boxesOffset + cur_row * 7;
+    const float* cur_box = boxesOffset + cur_row * nbBoxDim;
     uint64_t t = 0;
     int i = (row_start == col_start) ? (threadIdx.x + 1) : 0;
     for (; i < col_size; i++) {
@@ -152,7 +155,7 @@ class NMS3dPlugin : public IPluginV2DynamicExt {
    * IO Part:
    *    Input:
    *        0: inScores             [float]     [b, topK]
-   *        1: boxes                [float]     [b, topK, 7]
+   *        1: boxes                [float]     [b, topK, 7 + a]
    *    Output:
    *        0: outScores            [float]     [b, topK]
    * */
@@ -204,15 +207,15 @@ class NMS3dPlugin : public IPluginV2DynamicExt {
      * IO Part:
      *    Input:
      *        0: inScores             [float]     [b, topK]
-     *        1: boxes                [float]     [b, topK, 7]
+     *        1: boxes                [float]     [b, topK, 7 + a]
      *    Output:
      *        0: outScores            [float]     [b, topK]
      * */
     if (inputDesc[0].type != DataType::kFLOAT || inputDesc[0].type != DataType::kFLOAT)
       throw std::runtime_error("Input type is not supported!");
 
-    const Dims& boxesDims = inputDesc[0].dims;
-    const int nbBatch = boxesDims.d[0], nbBox = boxesDims.d[1];
+    const Dims& boxesDims = inputDesc[1].dims;
+    const int nbBatch = boxesDims.d[0], nbBox = boxesDims.d[1], nbBoxDim = boxesDims.d[2];
     const int nbOverlapHashBlocks = kernel::DivUp(nbBox, THREADS_PER_BLOCK_NMS);
 
     cudaMemcpyAsync(outputs[0], inputs[0], nbBatch * nbBox * sizeof(float), cudaMemcpyDeviceToDevice, stream);
@@ -225,7 +228,8 @@ class NMS3dPlugin : public IPluginV2DynamicExt {
 
     dim3 blocks(nbBatch, nbOverlapHashBlocks, nbOverlapHashBlocks);
     dim3 threads(THREADS_PER_BLOCK_NMS);
-    kernel::overlap_matrix_kernel<<<blocks, threads, 0, stream>>>(boxes, overlapMatrix, nbBox, mNmsOverlapThreshold);
+    kernel::overlap_matrix_kernel<<<blocks, threads, 0, stream>>>(boxes, overlapMatrix, nbBox, nbBoxDim,
+                                                                  mNmsOverlapThreshold);
     kernel::score_nms_kernel<<<nbBatch, 1, nbOverlapHashBlocks * sizeof(uint64_t), stream>>>(overlapMatrix, nmsScores,
                                                                                              nbBox);
     return 0;
