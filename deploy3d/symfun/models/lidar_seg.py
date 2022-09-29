@@ -5,6 +5,19 @@ import io
 
 
 class LidarSegRubyOuster(TRTOnnxModule):
+    optimization_profiles = [
+        {'batch_point_feats': {'opt': (480000, 4),
+                               'min': (480000, 4),
+                               'max': (480000, 4)},
+         'batch_indices': {'opt': (480000,),
+                           'min': (480000,),
+                           'max': (480000,)},
+         'voxel_config': {'opt': (6,),
+                          'min': (6,),
+                          'max': (6,)},
+         'in_spatial_shape': {'opt': (1, 0, 480, 360, 32),
+                              'min': (1, 0, 480, 360, 32),
+                              'max': (1, 0, 480, 360, 32)}}]
     in_shapes = {'batch_point_feats': (480000, 4),
                  'batch_indices': (480000,),
                  'cylinder_config': (6,),
