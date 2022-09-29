@@ -6,13 +6,13 @@ class YoloX3dDecode(torch.autograd.Function):
     """
     /** input:
      *    cls_scores:       float32/16 [b, numClassId, y, x]
-     *    bbox_preds:       float32/16 [b, 9, y, x]
+     *    bbox_preds:       float32/16 [b, 9 + a, y, x]
      *    voxel_config:     float32 [6]
      *  output:
      *    -- repeat --
      *      topk_class_ids: int32      [b, topK]
      *      topk_scores:    float32    [b, topK]
-     *      topk_boxes:     float32    [b, topK, 7]
+     *      topk_boxes:     float32    [b, topK, 7 + a]
      *    -- repeat end --
      * */
     """
@@ -26,11 +26,12 @@ class YoloX3dDecode(torch.autograd.Function):
         batch_size = cls_scores.shape[0]
         ret = []
         topk = min(topk, int(cls_scores.shape[2]) * int(cls_scores.shape[3]))
+        a = int(bbox_preds.shape[1]) - 9
         for _ in range(num_class_ids):
             topk_class_ids = cls_scores.new_zeros((batch_size, topk),
                                                   dtype=torch.int32)
             topk_scores = cls_scores.new_zeros((batch_size, topk))
-            topk_boxes = cls_scores.new_zeros((batch_size, topk, 7))
+            topk_boxes = cls_scores.new_zeros((batch_size, topk, 7 + a))
             ret += [topk_class_ids, topk_scores, topk_boxes]
         return tuple(ret)
 

@@ -35,6 +35,7 @@ __global__ void decode(Ref2D<int32_t> topk_class_ids,
                        const Ref1D<const float> pillar_config) {
   const int32_t cls = class_id[class_i];
   const int32_t topK = topk_class_ids.size(1);
+  const int32_t bbox_out_params = topk_boxes.size(2);
   const float x_min = pillar_config[0], y_min = pillar_config[1], z_min = pillar_config[2];
   const float feat_stride = static_cast<float>(stride) * pillar_config[3];
 
@@ -109,7 +110,7 @@ __global__ void decode(Ref2D<int32_t> topk_class_ids,
     }
     topk_class_ids[idx] = cls;
     topk_scores[idx] = score;
-    auto topk_boxes_offset = &topk_boxes[idx * 7];
+    auto topk_boxes_offset = &topk_boxes(b, rank, 0);
     topk_boxes_offset[0] = cx;
     topk_boxes_offset[1] = cy;
     topk_boxes_offset[2] = cz;
@@ -117,6 +118,10 @@ __global__ void decode(Ref2D<int32_t> topk_class_ids,
     topk_boxes_offset[4] = dy;
     topk_boxes_offset[5] = dz;
     topk_boxes_offset[6] = yaw;
+    for (int a = 7; a < bbox_out_params; a++) {
+      pred_box += box_param_stride;
+      topk_boxes_offset[a] = float(*pred_box);
+    }
   }
 }
 
@@ -169,13 +174,13 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
 
   /** input:
    *    cls_scores:       float32/16 [b, numClassId, y, x]
-   *    bbox_preds:       float32/16 [b, 9, y, x]
+   *    bbox_preds:       float32/16 [b, 9 + a, y, x]
    *    voxel_config:     float32 [6]
    *  output:
    *    -- repeat --
    *      topk_class_ids: int32      [b, topK]
    *      topk_scores:    float32    [b, topK]
-   *      topk_boxes:     float32    [b, topK, 7]
+   *      topk_boxes:     float32    [b, topK, 7 + a]
    *    -- repeat end --
    * */
   int getNbOutputs() const NOEXCEPT override {
@@ -190,10 +195,12 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
     auto size_bev = exprBuilder.operation(DimensionOperation::kPROD, *inputs[0].d[2], *inputs[0].d[3]);
     auto size_topk = exprBuilder.constant(p.topk);
     auto size_topk_clamped = exprBuilder.operation(DimensionOperation::kMIN, *size_bev, *size_topk);
+    auto size_boxes_dir_dim = exprBuilder.constant(2);
+    auto size_boxes_out_dim = exprBuilder.operation(DimensionOperation::kSUB, *inputs[1].d[1], *size_boxes_dir_dim);
     switch (outputIndex % 3) {
     case 0:
     case 1: return {2, {inputs[0].d[0], size_topk_clamped}};
-    default: return {3, {inputs[0].d[0], size_topk_clamped, exprBuilder.constant(7)}};
+    default: return {3, {inputs[0].d[0], size_topk_clamped, size_boxes_out_dim}};
     }
   }
   DataType getOutputDataType(int index, const nvinfer1::DataType* inputTypes, int nbInputs) const NOEXCEPT override {
@@ -263,7 +270,7 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
       using value_type = float;
 
       size_t workspaceBytes;
-      CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, workspaceBytes, static_cast<value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments, seg_begin,
           seg_end);
@@ -274,7 +281,7 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
       using value_type = half;
 
       size_t workspaceBytes;
-      CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, workspaceBytes, static_cast<value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments, seg_begin,
           seg_end);
@@ -291,13 +298,13 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
               cudaStream_t stream) NOEXCEPT {
     /** input:
      *    cls_scores:       float32/16 [b, numClassId, y, x]
-     *    bbox_preds:       float32/16 [b, 9, y, x]
+     *    bbox_preds:       float32/16 [b, 9 + a, y, x]
      *    voxel_config:     float32 [6]
      *  output:
      *    -- repeat --
      *      topk_class_ids: int32      [b, topK]
      *      topk_scores:    float32    [b, topK]
-     *      topk_boxes:     float32    [b, topK, 7]
+     *      topk_boxes:     float32    [b, topK, 7 + a]
      *    -- repeat end --
      * */
     CHECK_CUDA_ERR();
@@ -337,12 +344,12 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
           indices);
 
       size_t cubTempStorageBytes;
-      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, cubTempStorageBytes, static_cast<const value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<const int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments,
           seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);
-      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           temp, cubTempStorageBytes, cls_scores.data(), sorted_scores.data(), indices.data(), sorted_indices.data(),
           sort_num_items, sort_num_segments, seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);
@@ -377,12 +384,12 @@ class YoloX3dDecodePlugin : public IPluginV2DynamicExt {
           indices);
 
       size_t cubTempStorageBytes;
-      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           nullptr, cubTempStorageBytes, static_cast<const value_type*>(nullptr), static_cast<value_type*>(nullptr),
           static_cast<const int32_t*>(nullptr), static_cast<int32_t*>(nullptr), sort_num_items, sort_num_segments,
           seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);
-      err = CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      err = DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceSegmentedRadixSort::SortPairsDescending(
           temp, cubTempStorageBytes, cls_scores.data(), sorted_scores.data(), indices.data(), sorted_indices.data(),
           sort_num_items, sort_num_segments, seg_begin, seg_end, 0, sizeof(value_type) * 8, stream);
       CHECK_RETURN_STATUS(err);

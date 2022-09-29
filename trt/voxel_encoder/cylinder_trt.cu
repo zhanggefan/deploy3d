@@ -121,7 +121,7 @@ constexpr int hashSpace = 2;
 size_t CylinderEncoderMalloc(const GPU& d, const size_t numPtsIn) {
   size_t reqBytes = 0;
   ssize_t numElemHash = numPtsIn * hashSpace;
-  CUB_NS_QUALIFIER::cub::DeviceScan::InclusiveSum<int32_t*, int32_t*>(nullptr, reqBytes, nullptr, nullptr, numElemHash,
+  DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceScan::InclusiveSum<int32_t*, int32_t*>(nullptr, reqBytes, nullptr, nullptr, numElemHash,
                                                                       d.getStream());
   reqBytes += (3 * numElemHash + numPtsIn) * sizeof(int32_t);
   return reqBytes;
@@ -163,7 +163,7 @@ void CylinderEncoder(const GPU& d,
     kernel::resetHashKernel<kernel::HashTable><<<getBlocks(hash.size()), CUDA_NUM_THREADS, 0, d.getStream()>>>(hash);
     kernel::cylinderize<T, kernel::HashTable><<<getBlocks(numPtsIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(
         hashSlot, hash, batchPointAugFeats, batchPointFeats, batchIndices, cylinderConfig, inSpatialShape);
-    CUB_NS_QUALIFIER::cub::DeviceScan::InclusiveSum(workingStoragePtr, workingStorageBytes, hashValue.data(),
+    DEPLOY3D_CUB_NS_QUALIFIER::cub::DeviceScan::InclusiveSum(workingStoragePtr, workingStorageBytes, hashValue.data(),
                                                     hashValueIncScan.data(), hash.size(), d.getStream());
     cudaMemcpyAsync(numActOut, &hashValueIncScan[hashValueIncScan.numel() - 1], sizeof(*numActOut),
                     cudaMemcpyDeviceToDevice, d.getStream());
