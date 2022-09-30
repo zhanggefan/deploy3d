@@ -29,7 +29,7 @@ class LidarDetRuby(TRTOnnxModule):
     classes = ['BUS', 'PEDESTRIAN', 'CAR', 'CYCLIST', 'TRICYCLE', 'ROADBLOCK']
     score_threshold = [0.7, 0.5, 0.7, 0.5, 0.5, 0.3]
 
-    def __init__(self, onnx_folder):
+    def __init__(self, onnx_folder=None):
         super(LidarDetRuby, self).__init__(onnx_folder)
         self.active_bindings['voxel_config'][:] = torch.tensor(
             self.voxel_config)

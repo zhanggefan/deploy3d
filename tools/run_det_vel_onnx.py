@@ -9,13 +9,12 @@ import json
 
 
 def main():
-    ruby_path = './det3d_ruby_vel'
-    ruby_metas = './data/metas.json'
-
-    lidar_det_ruby_vel = LidarDetRubyVel(ruby_path)
-
     pts_files = sorted(glob.glob('data/*.npy'))
-    with open(ruby_metas) as f:
+    pts_metas = './data/metas.json'
+
+    lidar_det_ruby_vel = LidarDetRubyVel()
+
+    with open(pts_metas) as f:
         pts_metas = {m['_id']: m for m in json.load(f)}
     pts_files = [*zip(pts_files[1:], pts_files[:-1])]
 
