@@ -5,6 +5,7 @@ import io
 
 
 class LidarSegRubyOuster(TRTOnnxModule):
+    model = 'https://filebrowser.cowarobot.cn/api/public/dl/YQ8m4RaY'
     optimization_profiles = [
         {'batch_point_feats': {'opt': (480000, 4),
                                'min': (480000, 4),

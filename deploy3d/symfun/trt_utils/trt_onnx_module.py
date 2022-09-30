@@ -9,6 +9,7 @@ import yaml
 import os.path as osp
 import os
 import pickle
+from urllib.request import urlopen
 
 
 class TRTOnnxModule:
@@ -77,11 +78,34 @@ class TRTOnnxModule:
         return TRTOnnxModule.logger
 
     def build_engine(self, onnx_folder):
-        model_onnx = glob.glob(osp.join(onnx_folder, '*.onnx'))[0]
-        with open(model_onnx, 'rb') as f:
-            model_onnx_bin = f.read()
+        if onnx_folder is None:
+            model_onnx = []
+            model_cfg = []
+        else:
+            model_onnx = glob.glob(osp.join(onnx_folder, '*.onnx'))
+            model_cfg = glob.glob(osp.join(onnx_folder, '*.cfg'))
 
-        model_cfg = glob.glob(osp.join(onnx_folder, '*.cfg'))
+        if len(model_onnx) > 0:
+            model_onnx = model_onnx[0]
+            with open(model_onnx, 'rb') as f:
+                model_onnx_bin = f.read()
+            model_onnx_hash = hashlib.md5(model_onnx_bin).hexdigest()
+        else:
+            assert hasattr(self, 'model'), (
+                'if `model.onnx` is not present, the model class should have '
+                '`model` attributes, which is the url path to the model on '
+                'intranet. Otherwise we have no idea what the model is.')
+            model_onnx_hash = hashlib.md5(
+                self.model.encode('utf-8')).hexdigest()
+            model_onnx = osp.expanduser(osp.join(TRTOnnxModule.cache,
+                                                 model_onnx_hash + '.onnx'))
+            if not osp.exists(model_onnx):
+                resp = urlopen(self.model)
+                assert resp.getcode() == 200
+                model_onnx_bin = resp.read()
+                with open(model_onnx, 'wb') as f:
+                    f.write(model_onnx_bin)
+
         if len(model_cfg) > 0:
             model_cfg = model_cfg[0]
             with open(model_cfg, 'rb') as f:
@@ -91,11 +115,13 @@ class TRTOnnxModule:
                 'if `model.cfg` is not present, the model class should have '
                 '`optimization_profiles` attributes, otherwise we have no '
                 'idea of the input dimensions so that we cannot optimize the '
-                'model')
+                'model.')
             model_cfg = self.optimization_profiles
             model_cfg_bin = pickle.dumps(self.optimization_profiles)
+        model_cfg_hash = hashlib.md5(model_cfg_bin).hexdigest()
 
-        engine_name = hashlib.md5(model_onnx_bin + model_cfg_bin).hexdigest()
+        engine_name = hashlib.md5(
+            (model_onnx_hash + model_cfg_hash).encode('utf-8')).hexdigest()
         engine_file = osp.expanduser(
             osp.join(TRTOnnxModule.cache, engine_name + '.engine'))
 
@@ -198,7 +224,7 @@ class TRTOnnxModule:
         assert self.context.all_binding_shapes_specified, 'not all dynamic binding shapes specified!'
         self._prepare_io()
 
-    def __init__(self, onnx_folder):
+    def __init__(self, onnx_folder=None):
         self._load_libraries()
         self.runtime, self.engine, self.context = None, None, None
         self.stream = None

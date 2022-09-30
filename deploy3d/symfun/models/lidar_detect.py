@@ -6,6 +6,7 @@ from scipy.spatial.transform import Rotation as R
 
 
 class LidarDetRuby(TRTOnnxModule):
+    model = 'https://filebrowser.cowarobot.cn/api/public/dl/MBcRHd0K'
     optimization_profiles = [
         {'batch_point_feats': {'opt': (480000, 4),
                                'min': (480000, 4),
@@ -96,6 +97,7 @@ class LidarDetRuby(TRTOnnxModule):
 
 
 class LidarDetOuster(LidarDetRuby):
+    model = 'https://filebrowser.cowarobot.cn/api/public/dl/OYj8eWIY'
     optimization_profiles = [
         {'batch_point_feats': {'opt': (480000, 5),
                                'min': (480000, 5),
@@ -127,6 +129,7 @@ class LidarDetOuster(LidarDetRuby):
 
 
 class LidarDetRubyVel(LidarDetRuby):
+    model = 'https://filebrowser.cowarobot.cn/api/public/dl/xcW5NwdU'
     optimization_profiles = [
         {'batch_point_feats': {'opt': (480000, 5),
                                'min': (480000, 5),
