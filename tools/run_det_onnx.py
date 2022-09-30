@@ -7,11 +7,8 @@ import matplotlib.pyplot as plt
 
 
 def main():
-    ruby_path = './det3d_ruby'
-    ouster_path = './det3d_ouster'
-
-    lidar_det_ruby = LidarDetRuby(ruby_path)
-    lidar_det_ouster = LidarDetOuster(ouster_path)
+    lidar_det_ruby = LidarDetRuby()
+    lidar_det_ouster = LidarDetOuster()
 
     pts_files = sorted(glob.glob('data/*.npy'))
 

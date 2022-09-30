@@ -6,6 +6,7 @@ from scipy.spatial.transform import Rotation as R
 
 
 class LidarDetRuby(TRTOnnxModule):
+    model = 'https://filebrowser.cowarobot.cn/api/public/dl/MBcRHd0K'
     optimization_profiles = [
         {'batch_point_feats': {'opt': (480000, 4),
                                'min': (480000, 4),
@@ -28,7 +29,7 @@ class LidarDetRuby(TRTOnnxModule):
     classes = ['BUS', 'PEDESTRIAN', 'CAR', 'CYCLIST', 'TRICYCLE', 'ROADBLOCK']
     score_threshold = [0.7, 0.5, 0.7, 0.5, 0.5, 0.3]
 
-    def __init__(self, onnx_folder):
+    def __init__(self, onnx_folder=None):
         super(LidarDetRuby, self).__init__(onnx_folder)
         self.active_bindings['voxel_config'][:] = torch.tensor(
             self.voxel_config)
@@ -96,6 +97,7 @@ class LidarDetRuby(TRTOnnxModule):
 
 
 class LidarDetOuster(LidarDetRuby):
+    model = 'https://filebrowser.cowarobot.cn/api/public/dl/OYj8eWIY'
     optimization_profiles = [
         {'batch_point_feats': {'opt': (480000, 5),
                                'min': (480000, 5),
@@ -127,6 +129,7 @@ class LidarDetOuster(LidarDetRuby):
 
 
 class LidarDetRubyVel(LidarDetRuby):
+    model = 'https://filebrowser.cowarobot.cn/api/public/dl/xcW5NwdU'
     optimization_profiles = [
         {'batch_point_feats': {'opt': (480000, 5),
                                'min': (480000, 5),

@@ -7,9 +7,7 @@ import matplotlib.pyplot as plt
 
 
 def main():
-    cylinder3d_path = 'seg3d_ruby_ouster'
-
-    lidar_cylinder3d = LidarSegRubyOuster(cylinder3d_path)
+    lidar_cylinder3d = LidarSegRubyOuster()
     
     pts_files = sorted(glob.glob('data/*.npy'))
     
