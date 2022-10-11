@@ -103,6 +103,8 @@ class TRTOnnxModule:
                 resp = urlopen(self.model)
                 assert resp.getcode() == 200
                 model_onnx_bin = resp.read()
+                os.makedirs(osp.expanduser(
+                    osp.join(TRTOnnxModule.cache)), exist_ok=True)
                 with open(model_onnx, 'wb') as f:
                     f.write(model_onnx_bin)
 
