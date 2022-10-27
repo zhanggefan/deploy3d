@@ -77,6 +77,6 @@ class LidarSegRubyOuster(TRTOnnxModule):
         self.active_bindings['batch_indices'][num_points:] = -1
 
     def postprocess(self, points):
-        labels = self.active_bindings['batch_point_labels']
-        labels = labels.cpu().numpy()
-        return dict(labels=labels, mask=self.mask)
+        labels = self.active_bindings['batch_point_labels'].cpu().numpy()
+        indices = self.active_bindings['batch_indices'].cpu().numpy()
+        return dict(labels=labels, indices=indices, mask=self.mask)
