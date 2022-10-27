@@ -7,7 +7,7 @@ class NMS3d(torch.autograd.Function):
      * IO Part:
      *    Input:
      *        0: inScores             [float]     [b, topK]
-     *        1: boxes                [float]     [b, topK, 7]
+     *        1: boxes                [float]     [b, topK, 7 + a]
      *    Output:
      *        0: outScores            [float]     [b, topK]
      * */

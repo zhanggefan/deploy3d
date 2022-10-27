@@ -8,6 +8,8 @@ import numpy as np
 import yaml
 import os.path as osp
 import os
+import pickle
+from urllib.request import urlopen
 
 
 class TRTOnnxModule:
@@ -76,14 +78,52 @@ class TRTOnnxModule:
         return TRTOnnxModule.logger
 
     def build_engine(self, onnx_folder):
-        model_onnx = glob.glob(osp.join(onnx_folder, '*.onnx'))[0]
-        model_cfg = glob.glob(osp.join(onnx_folder, '*.cfg'))[0]
+        if onnx_folder is None:
+            model_onnx = []
+            model_cfg = []
+        else:
+            model_onnx = glob.glob(osp.join(onnx_folder, '*.onnx'))
+            model_cfg = glob.glob(osp.join(onnx_folder, '*.cfg'))
 
-        with open(model_onnx, 'rb') as f:
-            model_onnx_bin = f.read()
-        with open(model_cfg, 'rb') as f:
-            model_cfg_bin = f.read()
-        engine_name = hashlib.md5(model_onnx_bin + model_cfg_bin).hexdigest()
+        if len(model_onnx) > 0:
+            model_onnx = model_onnx[0]
+            with open(model_onnx, 'rb') as f:
+                model_onnx_bin = f.read()
+            model_onnx_hash = hashlib.md5(model_onnx_bin).hexdigest()
+        else:
+            assert hasattr(self, 'model'), (
+                'if `model.onnx` is not present, the model class should have '
+                '`model` attributes, which is the url path to the model on '
+                'intranet. Otherwise we have no idea what the model is.')
+            model_onnx_hash = hashlib.md5(
+                self.model.encode('utf-8')).hexdigest()
+            model_onnx = osp.expanduser(osp.join(TRTOnnxModule.cache,
+                                                 model_onnx_hash + '.onnx'))
+            if not osp.exists(model_onnx):
+                resp = urlopen(self.model)
+                assert resp.getcode() == 200
+                model_onnx_bin = resp.read()
+                os.makedirs(osp.expanduser(
+                    osp.join(TRTOnnxModule.cache)), exist_ok=True)
+                with open(model_onnx, 'wb') as f:
+                    f.write(model_onnx_bin)
+
+        if len(model_cfg) > 0:
+            model_cfg = model_cfg[0]
+            with open(model_cfg, 'rb') as f:
+                model_cfg_bin = f.read()
+        else:
+            assert hasattr(self, 'optimization_profiles'), (
+                'if `model.cfg` is not present, the model class should have '
+                '`optimization_profiles` attributes, otherwise we have no '
+                'idea of the input dimensions so that we cannot optimize the '
+                'model.')
+            model_cfg = self.optimization_profiles
+            model_cfg_bin = pickle.dumps(self.optimization_profiles)
+        model_cfg_hash = hashlib.md5(model_cfg_bin).hexdigest()
+
+        engine_name = hashlib.md5(
+            (model_onnx_hash + model_cfg_hash).encode('utf-8')).hexdigest()
         engine_file = osp.expanduser(
             osp.join(TRTOnnxModule.cache, engine_name + '.engine'))
 
@@ -96,20 +136,28 @@ class TRTOnnxModule:
                 config.max_workspace_size = 1 << 32  # 4GB
                 config.flags = (1 << int(trt.BuilderFlag.FP16))
 
-                with open(model_cfg) as f:
-                    model_cfg = yaml.load(f, Loader=yaml.FullLoader)
+                if isinstance(model_cfg, str):
+                    with open(model_cfg) as f:
+                        model_cfg = yaml.load(f, Loader=yaml.FullLoader)
 
-                input_opt = model_cfg['size']
-                input_min = model_cfg.get('size_min', input_opt)
-                input_max = model_cfg.get('size_max', input_opt)
-                assert len(input_opt) == len(input_min) == len(input_max)
-                for opt, min, max in zip(input_opt, input_min, input_max):
-                    assert len(opt) == len(min) == len(max)
-                    profile = builder.create_optimization_profile()
-                    for in_idx, (in_opt, in_min, in_max) in enumerate(zip(opt, min, max)):
-                        in_name = network.get_input(in_idx).name
-                        profile.set_shape(in_name, in_min, in_opt, in_max)
-                    config.add_optimization_profile(profile)
+                    input_opt = model_cfg['size']
+                    input_min = model_cfg.get('size_min', input_opt)
+                    input_max = model_cfg.get('size_max', input_opt)
+                    assert len(input_opt) == len(input_min) == len(input_max)
+                    for opt, min, max in zip(input_opt, input_min, input_max):
+                        assert len(opt) == len(min) == len(max)
+                        profile = builder.create_optimization_profile()
+                        for in_idx, (in_opt, in_min, in_max) in enumerate(zip(opt, min, max)):
+                            in_name = network.get_input(in_idx).name
+                            profile.set_shape(in_name, in_min, in_opt, in_max)
+                        config.add_optimization_profile(profile)
+                else:
+                    for optim_prof in model_cfg:
+                        profile = builder.create_optimization_profile()
+                        for in_name, in_shapes in optim_prof.items():
+                            profile.set_shape(
+                                in_name, in_shapes['min'], in_shapes['opt'], in_shapes['max'])
+                        config.add_optimization_profile(profile)
 
                 serialized_engine = builder.build_serialized_network(
                     network, config)
@@ -178,7 +226,7 @@ class TRTOnnxModule:
         assert self.context.all_binding_shapes_specified, 'not all dynamic binding shapes specified!'
         self._prepare_io()
 
-    def __init__(self, onnx_folder):
+    def __init__(self, onnx_folder=None):
         self._load_libraries()
         self.runtime, self.engine, self.context = None, None, None
         self.stream = None

@@ -161,3 +161,6 @@ cython_debug/
 .vscode/
 
 cmake-build-debug/
+data/
+det3d*/
+seg3d*/

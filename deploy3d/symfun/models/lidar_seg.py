@@ -5,6 +5,20 @@ import io
 
 
 class LidarSegRubyOuster(TRTOnnxModule):
+    model = 'https://filebrowser.cowarobot.cn/api/public/dl/YQ8m4RaY'
+    optimization_profiles = [
+        {'batch_point_feats': {'opt': (480000, 4),
+                               'min': (480000, 4),
+                               'max': (480000, 4)},
+         'batch_indices': {'opt': (480000,),
+                           'min': (480000,),
+                           'max': (480000,)},
+         'voxel_config': {'opt': (6,),
+                          'min': (6,),
+                          'max': (6,)},
+         'in_spatial_shape': {'opt': (1, 0, 480, 360, 32),
+                              'min': (1, 0, 480, 360, 32),
+                              'max': (1, 0, 480, 360, 32)}}]
     in_shapes = {'batch_point_feats': (480000, 4),
                  'batch_indices': (480000,),
                  'cylinder_config': (6,),
@@ -12,7 +26,7 @@ class LidarSegRubyOuster(TRTOnnxModule):
     sensors = [[0, 1, 2]]
     cylinder_config = [-2, -np.pi, 0, 4, np.pi, 50]
 
-    def __init__(self, onnx_folder):
+    def __init__(self, onnx_folder=None):
         super(LidarSegRubyOuster, self).__init__(onnx_folder)
         self.active_bindings['cylinder_config'][:] = torch.tensor(
             self.cylinder_config)
@@ -32,13 +46,14 @@ class LidarSegRubyOuster(TRTOnnxModule):
                          points['y'].astype(np.float32),
                          points['z'].astype(np.float32),
                          points['intensity'].astype(np.float32) / 255], axis=-1)
-    
+
     def radius_range_filter(self, raw_points, min_range=1.5, max_range=50):
-        points = np.stack([raw_points['x'], raw_points['y'], raw_points['z']], axis=-1)
+        points = np.stack(
+            [raw_points['x'], raw_points['y'], raw_points['z']], axis=-1)
         distance = np.linalg.norm(points[:, :2], ord=2, axis=-1)
         mask = (distance > min_range) & (distance < max_range)
         return mask, raw_points[mask]
-    
+
     def preprocess(self, points):
         points = self._read_pts(points)
         self.mask, points = self.radius_range_filter(points)
