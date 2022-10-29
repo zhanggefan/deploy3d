@@ -2,7 +2,7 @@ from ..trt_utils import TRTOnnxModule
 import torch
 import numpy as np
 import io
-
+import tensorrt as trt
 
 class LidarSegRubyOuster(TRTOnnxModule):
     model = 'https://filebrowser.cowarobot.cn/api/public/dl/YQ8m4RaY'
@@ -68,7 +68,8 @@ class LidarSegRubyOuster(TRTOnnxModule):
         points = self._npy2array(points)
         num_points = points.shape[0]
         if num_points > self.active_bindings['batch_point_feats'].shape[0]:
-            self._logger().WARNING('discard input points because the number of input is too large!')
+            self._logger().log(trt.Logger.INFO, 
+                               'discard input points because the number of input is too large!')
             num_points = self.active_bindings['batch_point_feats'].shape[0]
         self.active_bindings['batch_point_feats'][:num_points] = torch.from_numpy(points)[:num_points].to(
             dtype=self.active_bindings['batch_point_feats'].dtype)
@@ -77,6 +78,6 @@ class LidarSegRubyOuster(TRTOnnxModule):
         self.active_bindings['batch_indices'][num_points:] = -1
 
     def postprocess(self, points):
-        labels = self.active_bindings['batch_point_labels'].cpu().numpy()
+        seg_labels = self.active_bindings['batch_point_labels'].cpu().numpy()
         indices = self.active_bindings['batch_indices'].cpu().numpy()
-        return dict(labels=labels, indices=indices, mask=self.mask)
+        return dict(seg_labels=seg_labels, indices=indices, mask=self.mask)
