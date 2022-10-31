@@ -56,7 +56,8 @@ class LidarSegRubyOuster(TRTOnnxModule):
 
     def preprocess(self, points):
         points = self._read_pts(points)
-        self.mask, points = self.radius_range_filter(points)
+        mask, points = self.radius_range_filter(points)
+        self.mask = np.where(mask)[0]
         pts_sensor = points['sensor']
         batch_indices = np.full([pts_sensor.shape[0]], -1)
         for batch_idx, batch_sensors in enumerate(self.sensors):
@@ -64,6 +65,7 @@ class LidarSegRubyOuster(TRTOnnxModule):
                 batch_indices[pts_sensor == sensor] = batch_idx
         sensor_mask = batch_indices >= 0
         points = points[sensor_mask]
+        self.mask = self.mask[sensor_mask]
         batch_indices = batch_indices[sensor_mask]
         points = self._npy2array(points)
         num_points = points.shape[0]
@@ -79,5 +81,4 @@ class LidarSegRubyOuster(TRTOnnxModule):
 
     def postprocess(self, points):
         seg_labels = self.active_bindings['batch_point_labels'].cpu().numpy()
-        indices = self.active_bindings['batch_indices'].cpu().numpy()
-        return dict(seg_labels=seg_labels, indices=indices, mask=self.mask)
+        return dict(seg_labels=seg_labels, seg_mask=self.mask)
