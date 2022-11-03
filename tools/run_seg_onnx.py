@@ -13,10 +13,17 @@ def main():
     
     def vis_iter_fun():
         for i, pts_file in enumerate(tqdm.tqdm(pts_files)):
-            pts = np.load(pts_file)
-            result_ruby = lidar_cylinder3d(pts)
-            labels, mask = result_ruby['labels'], result_ruby['mask']
-            yield i, pts[mask], labels
+            raw_points = np.load(pts_file)
+            result_ruby = lidar_cylinder3d(raw_points)
+            # seg_mask is valid input point_idx
+            seg_labels, seg_mask = result_ruby['seg_labels'], result_ruby['seg_mask']
+            
+            labels = np.zeros(raw_points.shape[0], dtype=np.uint8)
+            num_pts = min(seg_mask.shape[0], 480000)
+            seg_mask = seg_mask[0:num_pts]
+            labels[seg_mask] = seg_labels[0:num_pts]
+    
+            yield i, raw_points, labels
 
     vis_iter = vis_iter_fun()
 

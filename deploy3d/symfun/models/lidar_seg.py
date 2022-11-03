@@ -2,7 +2,7 @@ from ..trt_utils import TRTOnnxModule
 import torch
 import numpy as np
 import io
-
+import tensorrt as trt
 
 class LidarSegRubyOuster(TRTOnnxModule):
     model = 'https://filebrowser.cowarobot.cn/api/public/dl/YQ8m4RaY'
@@ -56,7 +56,8 @@ class LidarSegRubyOuster(TRTOnnxModule):
 
     def preprocess(self, points):
         points = self._read_pts(points)
-        self.mask, points = self.radius_range_filter(points)
+        mask, points = self.radius_range_filter(points)
+        self.mask = np.where(mask)[0]
         pts_sensor = points['sensor']
         batch_indices = np.full([pts_sensor.shape[0]], -1)
         for batch_idx, batch_sensors in enumerate(self.sensors):
@@ -64,11 +65,13 @@ class LidarSegRubyOuster(TRTOnnxModule):
                 batch_indices[pts_sensor == sensor] = batch_idx
         sensor_mask = batch_indices >= 0
         points = points[sensor_mask]
+        self.mask = self.mask[sensor_mask]
         batch_indices = batch_indices[sensor_mask]
         points = self._npy2array(points)
         num_points = points.shape[0]
         if num_points > self.active_bindings['batch_point_feats'].shape[0]:
-            self._logger().WARNING('discard input points because the number of input is too large!')
+            self._logger().log(trt.Logger.INFO, 
+                               'discard input points because the number of input is too large!')
             num_points = self.active_bindings['batch_point_feats'].shape[0]
         self.active_bindings['batch_point_feats'][:num_points] = torch.from_numpy(points)[:num_points].to(
             dtype=self.active_bindings['batch_point_feats'].dtype)
@@ -77,6 +80,5 @@ class LidarSegRubyOuster(TRTOnnxModule):
         self.active_bindings['batch_indices'][num_points:] = -1
 
     def postprocess(self, points):
-        labels = self.active_bindings['batch_point_labels']
-        labels = labels.cpu().numpy()
-        return dict(labels=labels, mask=self.mask)
+        seg_labels = self.active_bindings['batch_point_labels'].cpu().numpy()
+        return dict(seg_labels=seg_labels, seg_mask=self.mask)
