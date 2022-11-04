@@ -16,7 +16,7 @@ def load_pose(pose_file):
     
     _id = osp.splitext(osp.split(pose_file)[-1])[0]
     pose = pose_dict['poses']['/lidar/current_pose']
-    timestamp = pose_dict[timestamp]
+    timestamp = pose_dict['timestamp']
     
     return dict(_id=_id,
                 pose=pose,
@@ -28,8 +28,9 @@ def main():
     lidar_det_ruby = LidarDetRuby()
     lidar_det_ouster = LidarDetOuster()
 
-    json_path = ''
-    pts_files = sorted(glob.glob('data/*.npy'))
+    json_path = '/data/output1/tag'
+    data_path = '/data/output1/data'
+    pts_files = sorted(glob.glob(osp.join(data_path, '*.npy')))
 
     def vis_iter_fun():
         for i, pts_file in enumerate(tqdm.tqdm(pts_files)):
