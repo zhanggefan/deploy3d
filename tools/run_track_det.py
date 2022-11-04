@@ -26,14 +26,22 @@ def load_pose(pose_file):
 
 def vis_iter_fun(pts_files, json_path, track, lidar_det_ruby, lidar_det_ouster):
     for i, pts_file in enumerate(tqdm.tqdm(pts_files)):
+        labels_3d, scores_3d, boxes_3d = [], [], []
         pts = np.load(pts_file)
-        result_ruby = lidar_det_ruby(pts)
-        result_ouster = lidar_det_ouster(pts)
-        labels_3d = result_ruby['labels_3d'] + result_ouster['labels_3d']
-        scores_3d = np.concatenate([result_ruby['scores_3d'], 
-                                    result_ouster['scores_3d']], axis=0)
-        boxes_3d = np.concatenate([result_ruby['boxes_3d'], 
-                                    result_ouster['boxes_3d']], axis=0)
+        if lidar_det_ruby is not None:
+            result_ruby = lidar_det_ruby(pts)
+            labels_3d.extend(result_ruby['labels_3d'])
+            scores_3d.append(result_ruby['scores_3d'])
+            boxes_3d.append(result_ruby['boxes_3d'])
+        
+        if lidar_det_ouster is not None:
+            result_ouster = lidar_det_ouster(pts)
+            labels_3d.extend(result_ouster['labels_3d'])
+            scores_3d.append(result_ouster['scores_3d'])
+            boxes_3d.append(result_ouster['boxes_3d'])
+        
+        scores_3d = np.concatenate(scores_3d, axis=0)
+        boxes_3d = np.concatenate(boxes_3d, axis=0)
         res_info = dict(labels_3d=labels_3d,
                         scores_3d=scores_3d,
                         boxes_3d=boxes_3d)
