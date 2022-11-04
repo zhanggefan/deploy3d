@@ -92,7 +92,7 @@ def main():
             return True
 
         det_box3d = np.concatenate([d['boxes_3d'] for d in det], axis=0)
-        det_names = np.concatenate([d['labels_3d'] for d in det], axis=0)
+        det_names = np.concatenate([d['labels_3d'] for d in det], axis=0).astype(np.uint8)
         det_scores = np.concatenate([d['scores_3d'] for d in det], axis=0)
 
         xyz = np.stack([points['x'], points['y'], points['z']], axis=-1).astype(np.float64)
