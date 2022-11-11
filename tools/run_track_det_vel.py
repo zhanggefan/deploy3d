@@ -1,3 +1,4 @@
+import os
 import glob
 import tqdm
 import time
@@ -195,13 +196,13 @@ def renderdetbox(box3d, labels, color=(0,0,1)):
 
     return ret, vel_vectors
 
-def update_thread(vis_iter, vis):
+def update_thread(vis_iter, vis, pts_files, data_path, export_image):
     is_done = False
     while not is_done:
         time.sleep(1)
         
         try:
-            _, points, track_data, res_info = next(vis_iter)
+            idx, points, track_data, res_info = next(vis_iter)
         except:
             is_done = True
         
@@ -246,14 +247,29 @@ def update_thread(vis_iter, vis):
                     vis.remove_geometry('det_vel')
                     vis.add_geometry('det_vel', det_vel)
             
+            if export_image:
+                pts_file = pts_files[idx][0]
+                save_path = osp.join(data_path, '..', 'det_with_vel')
+                if not osp.exists(save_path):
+                    os.makedirs(save_path)
+                file_name = osp.splitext(osp.split(pts_file)[-1])[0] + '.png'
+                file_path = osp.join(save_path, file_name)
+
+                vis.export_current_image(file_path)
+            
             vis.post_redraw()
         
         if not is_done:
             gui.Application.instance.post_to_main_thread(vis, render)
 
 def main():
-    pts_files = sorted(glob.glob('data/*.npy'))
+    export_image = False
+    
+    data_path = './data'
     pts_metas = './data/metas.json'
+    
+    pts_files = sorted(glob.glob(osp.join(data_path, '*.npy')))
+    pts_files = pts_files + [pts_files[-1]]
     
     isVel = True # whether with vel for tracking
     track = CTRACK(isVel=isVel)
@@ -271,15 +287,19 @@ def main():
     
     vis = o3d.visualization.O3DVisualizer()
     vis.enable_raw_mode(True)
-    vis.set_background((255.0, 255.0, 255.0, 255.0), None)
-    vis.point_size = 2
-    vis.setup_camera(60, (0, 0, 0), (-20, 0, 20), (1, 0, 1))
+    bg_color = (255, 255, 255, 255)
+    if export_image:
+        bg_color = (0, 0, 0, 0)
+    vis.set_background(bg_color, None)
+    vis.point_size = 1
+    vis.setup_camera(60, (0, 0, 0), (-25, 0, 20), (1, 0, 1))
     vis.show_skybox(False)
     vis.show_ground = False
     vis.ground_plane = vis.ground_plane.XY
+    vis.size_to_fit()
     
     app.add_window(vis)
-    app.run_in_thread(partial(update_thread, vis_iter, vis))
+    app.run_in_thread(partial(update_thread, vis_iter, vis, pts_files, data_path, export_image))
     app.run()
 
 if __name__ == '__main__':
