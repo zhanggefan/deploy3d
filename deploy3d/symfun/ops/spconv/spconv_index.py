@@ -12,8 +12,8 @@ class SPConvIdx3d(torch.autograd.Function):
    *        1: numActIn             [int32] [1]
    *        2: inSpatialShape       [void]  [B, 0, Z, Y, X]  // dynamic shape
    *    Output:
-   *        0: index                [int32] [3, kVol * mMaxNumActIn]
-   *        1: (numBuf, bufSegLen)  [int32] [1 + kVol]
+   *        0: index                [int32] [3, kVol * (mMaxNumActIn + 128)]
+   *        1: numIndex             [int32] [1]
    *      Optional:
    *        2: outCoors             [int32] [mMaxNumActOut, NDim + 1]
    *        3: numActOut            [int32] [1]
@@ -45,10 +45,10 @@ class SPConvIdx3d(torch.autograd.Function):
             torch.Tensor]]:
         max_num_act_in = in_coors.shape[0]
         kvol = int(np.prod(kernel_size))
-        index = in_coors.new_zeros((3, kvol * max_num_act_in))
-        index_buf_len = in_coors.new_zeros((1 + kvol,))
+        index = in_coors.new_zeros((3, kvol * (max_num_act_in + 128)))
+        num_index = in_coors.new_zeros((1,))
         if subm:
-            return index, index_buf_len
+            return index, num_index
         out_coors = in_coors.new_zeros((max_num_act_out, in_coors.shape[-1]))
         num_act_out = in_coors.new_zeros((1,))
         out_spatial_shape = list(in_spatial_shape.shape)
@@ -67,7 +67,7 @@ class SPConvIdx3d(torch.autograd.Function):
                             i] + 1)
 
         out_spatial_shape = in_spatial_shape.new_zeros(out_spatial_shape)
-        return index, index_buf_len, out_coors, num_act_out, out_spatial_shape
+        return index, num_index, out_coors, num_act_out, out_spatial_shape
 
     @staticmethod
     def symbolic(g: torch._C.Graph,

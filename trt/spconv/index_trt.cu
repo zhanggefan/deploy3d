@@ -88,8 +88,8 @@ template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
    *        1: numActIn             [int32] [1]
    *        2: inSpatialShape       [void]  [B, 0, Z, Y, X]  // dynamic shape
    *    Output:
-   *        0: index                [int32] [3, kVol * mMaxNumActIn]
-   *        1: (numBuf, bufSegLen)  [int32] [1 + kVol]
+   *        0: index                [int32] [3, kVol * (mMaxNumActIn + 128)]
+   *        1: numIndex             [int32] [1]
    *        2: outCoors             [int32] [mMaxNumActOut, NDim + 1]
    *        3: numActOut            [int32] [1]
    *        4: outSpatialShape      [void]  [B, 0, Z, Y, X]  // dynamic shape
@@ -103,19 +103,19 @@ template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
                                 int32_t nbInputs,
                                 IExprBuilder& exprBuilder) NOEXCEPT override {
     switch (outputIndex) {
-    case 0: {  // 0: index [int32] [3, kVol * mMaxNumActIn]
+    case 0: {  // 0: index [int32] [3, kVol * (mMaxNumActIn + 128)]
       int32_t kVol = 1;
 #pragma unroll
       for (auto s : p.kernelSize) { kVol *= s; }
       return {2,
               {exprBuilder.constant(3),
-               exprBuilder.operation(DimensionOperation::kPROD, *inputs[0].d[0], *exprBuilder.constant(kVol))}};
+               exprBuilder.operation(
+                   DimensionOperation::kPROD,
+                   *exprBuilder.operation(DimensionOperation::kSUM, *inputs[0].d[0], *exprBuilder.constant(128)),
+                   *exprBuilder.constant(kVol))}};
     }
-    case 1: {  // 1: (numBuf,) + bufSegLen [int32] [1 + kVol]
-      int32_t kVol = 1;
-#pragma unroll
-      for (auto s : p.kernelSize) { kVol *= s; }
-      return {1, {exprBuilder.constant(1 + kVol)}};
+    case 1: {  // 1: numIndex [int32] [1]
+      return {1, {exprBuilder.constant(1)}};
     }
     case 2:  // 2: outCoors [int32] [mMaxNumActOut, NDim + 1]
     {
@@ -198,8 +198,8 @@ template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
      *        1: numActIn             [int32] [1]
      *        2: inSpatialShape       [void]  [B, 0, Z, Y, X]  // dynamic shape
      *    Output:
-     *        0: index                [int32] [3, kVol * mMaxNumActIn]
-     *        1: (numBuf, bufSegLen)  [int32] [1 + kVol]
+     *        0: index                [int32] [3, kVol * (mMaxNumActIn + 128)]
+     *        1: numIndex             [int32] [1]
      *        2: outCoors             [int32] [mMaxNumActOut, NDim + 1]
      *        3: numActOut            [int32] [1]
      *        4: outSpatialShape      [void]  [B, 0, Z, Y, X]  // dynamic shape
@@ -209,14 +209,10 @@ template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
     cudaStreamSynchronize(stream);
     Ref2D<int32_t> inCoors(reinterpret_cast<int32_t*>(const_cast<void*>(inputs[0])), {numActIn, NDim + 1});
     auto index = fromTensorRT<2, int32_t>(outputs[0], outputDesc[0]);
-    auto bufferFromIn = index.template subview(0);
-    auto bufferToOut = index.template subview(1);
-    auto bufferOffset = index.template subview(2);
-    int32_t kVol = 1;
-#pragma unroll
-    for (auto s : p.kernelSize) { kVol *= s; }
-    auto numBuf = reinterpret_cast<int32_t*>(outputs[1]);
-    auto bufSegLen = Ref1D<int32_t>(numBuf + 1, {kVol});
+    auto GatherIn = index.template subview(0);
+    auto ScatterOut = index.template subview(1);
+    auto KernelOffset = index.template subview(2);
+    auto numIndex = reinterpret_cast<int32_t*>(outputs[1]);
     typename Size<NDim + 1>::index_vec_t outSpatialShapeVec;
     decltype(&inputDesc[2].dims.d[0]) outSpatialShapeDims;
     if (p.subM) {
@@ -234,8 +230,8 @@ template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
       ssize_t workspaceSize =
           spconv::func::createSparseSubMIndexMalloc<NDim, int32_t>(utils::GPU(), numActIn, p.kernelSize);
       Ref1D<uint8_t> workingStorage(reinterpret_cast<uint8_t*>(workspace), {workspaceSize});
-      spconv::func::createSparseSubMIndex<NDim, int32_t>(gpu, workingStorage, bufferFromIn, bufferToOut, bufferOffset,
-                                                         bufSegLen, numBuf, inCoors, p.kernelSize, p.stride, p.padding,
+      spconv::func::createSparseSubMIndex<NDim, int32_t>(gpu, workingStorage, GatherIn, ScatterOut, KernelOffset,
+                                                         numIndex, inCoors, p.kernelSize, p.stride, p.padding,
                                                          p.dilation, outSpatialShape);
       return 0;
     } else {
@@ -245,8 +241,8 @@ template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
           spconv::func::createSparseConvIndexMalloc<NDim, int32_t>(utils::GPU(), numActIn, p.kernelSize);
       Ref1D<uint8_t> workingStorage(reinterpret_cast<uint8_t*>(workspace), {workspaceSize});
       spconv::func::createSparseConvIndex<NDim, int32_t>(
-          gpu, workingStorage, bufferFromIn, bufferToOut, bufferOffset, bufSegLen, outCoors, numBuf, numActOut, inCoors,
-          p.kernelSize, p.stride, p.padding, p.dilation, outSpatialShape, p.transpose, p.maxNumActOut);
+          gpu, workingStorage, GatherIn, ScatterOut, KernelOffset, outCoors, numIndex, numActOut, inCoors, p.kernelSize,
+          p.stride, p.padding, p.dilation, outSpatialShape, p.transpose, p.maxNumActOut);
       return 0;
     }
   }
