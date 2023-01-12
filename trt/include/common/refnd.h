@@ -1,6 +1,7 @@
 #pragma once
 #include "macros.h"
 #include <NvInfer.h>
+#include <cutlass/half.h>
 #include <fstream>
 #include <initializer_list>
 #include <limits>
@@ -77,24 +78,12 @@ template <size_t Rank> class Size {
   };
   Size(const Size<Rank>& size) = default;
   HOST_DEVICE_INLINE Size() = delete;
-  HOST_DEVICE_INLINE const index_vec_t& sizes() const {
-    return size_;
-  }
-  HOST_DEVICE_INLINE ssize_t size(ssize_t idx) const {
-    return size_[idx];
-  }
-  HOST_DEVICE_INLINE ssize_t stride(ssize_t idx) const {
-    return stride_[idx];
-  }
-  HOST_DEVICE_INLINE ssize_t numel() const {
-    return size(0) * stride(0);
-  }
-  HOST_DEVICE_INLINE ssize_t& operator[](ssize_t idx) {
-    return size_[idx];
-  }
-  HOST_DEVICE_INLINE const ssize_t& operator[](ssize_t idx) const {
-    return size_[idx];
-  }
+  HOST_DEVICE_INLINE const index_vec_t& sizes() const { return size_; }
+  HOST_DEVICE_INLINE ssize_t size(ssize_t idx) const { return size_[idx]; }
+  HOST_DEVICE_INLINE ssize_t stride(ssize_t idx) const { return stride_[idx]; }
+  HOST_DEVICE_INLINE ssize_t numel() const { return size(0) * stride(0); }
+  HOST_DEVICE_INLINE ssize_t& operator[](ssize_t idx) { return size_[idx]; }
+  HOST_DEVICE_INLINE const ssize_t& operator[](ssize_t idx) const { return size_[idx]; }
 
   template <class Index> HOST_DEVICE_INLINE ssize_t is_valid(const Index* const coor) const {
     return indexing::is_valid<Rank>(coor, size_.data());
@@ -228,13 +217,14 @@ std::enable_if_t<std::is_void<T_void>::value, RefND<Rank, T>> fromTensorRT(T_voi
   assert(inputDesc.dims.nbDims == Rank);
   constexpr bool T_is_float = std::is_same<std::remove_cv_t<T>, float>::value;
   constexpr bool T_is_half = std::is_same<std::remove_cv_t<T>, half>::value;
+  constexpr bool T_is_cutlass_half = std::is_same<std::remove_cv_t<T>, cutlass::half_t>::value;
   constexpr bool T_is_int8 = std::is_same<std::remove_cv_t<T>, int8_t>::value;
   constexpr bool T_is_int32 = std::is_same<std::remove_cv_t<T>, int32_t>::value;
   constexpr bool T_is_bool = std::is_same<std::remove_cv_t<T>, bool>::value;
   constexpr bool unknown_type = false;
   switch (inputDesc.type) {
   case DataType::kFLOAT: assert(T_is_float); break;
-  case DataType::kHALF: assert(T_is_half); break;
+  case DataType::kHALF: assert(T_is_half || T_is_cutlass_half); break;
   case DataType::kINT8: assert(T_is_int8); break;
   case DataType::kINT32: assert(T_is_int32); break;
   case DataType::kBOOL: assert(T_is_bool); break;

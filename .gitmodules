@@ -1,0 +1,3 @@
+[submodule "trt/include/3rd/cutlass"]
+	path = trt/include/3rd/cutlass
+	url = https://github.com/NVIDIA/cutlass.git

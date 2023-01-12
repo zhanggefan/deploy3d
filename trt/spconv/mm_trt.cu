@@ -30,7 +30,7 @@ struct SPConvMMPluginParam {
   int32_t inChannels;
   int32_t outChannels;
   int32_t maxNumActOut;
-  bool subM;
+  bool subM;  // deprecated
   bool inverse;
   bool withBias;
 };
@@ -43,11 +43,10 @@ class SPConvMMPlugin : public IPluginV2DynamicExt {
   std::vector<float> wb;
   std::shared_ptr<DeviceVector> wRt;
   std::shared_ptr<DeviceVector> bRt;
-  std::vector<int32_t> numBufAndBufSegLen;
-  cublasHandle_t cublas;
-  DeviceVector cublasWS;
   const char* mNamespace;
-  static constexpr size_t cublasWSSize = 16777216;
+  using MMOp1 = spconv::mm::TensorOp<cutlass::half_t, 64, 64, 16, 32, 32, 16, cutlass::arch::Sm75>;
+  using MMOp2 = spconv::mm::TensorOp<cutlass::half_t, 64, 64, 32, 16, 32, 32, cutlass::arch::Sm75>;
+  using MMOp3 = spconv::mm::Simt<cutlass::half_t, 32, 64, 8, 16, 32, 8, cutlass::arch::Sm80>;
 
  public:
   /**
@@ -58,21 +57,14 @@ class SPConvMMPlugin : public IPluginV2DynamicExt {
                  const std::vector<float>& weightAndBias,
                  const std::shared_ptr<DeviceVector>& wRuntime,
                  const std::shared_ptr<DeviceVector>& bRuntime)
-      : p(param), wb(weightAndBias), wRt(wRuntime), bRt(bRuntime), numBufAndBufSegLen(param.kernelVol + 1),
-        cublasWS(cublasWSSize) {
-    cublasCreate_v2(&cublas);
-    cublasSetWorkspace_v2(cublas, cublasWS.data(), cublasWSSize);
-  }
-  SPConvMMPlugin(const void* data, size_t length) : cublasWS(cublasWSSize) {
+      : p(param), wb(weightAndBias), wRt(wRuntime), bRt(bRuntime) {}
+  SPConvMMPlugin(const void* data, size_t length) {
     SerializeStream s(data, length);
     s >> p;
     wb.resize((length - s.curPos()) / sizeof(float));
     s.loadRange(wb.begin(), wb.end());
     wRt = std::make_shared<DeviceVector>(p.kernelVol * p.inChannels * p.outChannels * sizeof(float));
     bRt = std::make_shared<DeviceVector>(p.outChannels * sizeof(float));
-    numBufAndBufSegLen.resize(p.kernelVol + 1);
-    cublasCreate_v2(&cublas);
-    cublasSetWorkspace_v2(cublas, cublasWS.data(), cublasWSSize);
   }
   size_t getSerializationSize() const NOEXCEPT override { return sizeof(p) + wb.size() * sizeof(wb[0]); }
   void serialize(void* buffer) const NOEXCEPT override {
@@ -87,10 +79,7 @@ class SPConvMMPlugin : public IPluginV2DynamicExt {
   }
   int32_t initialize() NOEXCEPT override { return 0; };
   void terminate() NOEXCEPT override{};
-  void destroy() NOEXCEPT override {
-    cublasDestroy_v2(cublas);
-    delete this;
-  };
+  void destroy() NOEXCEPT override { delete this; };
 
   /**
    * IO Part:
@@ -98,8 +87,8 @@ class SPConvMMPlugin : public IPluginV2DynamicExt {
    *        0: inFeats              [float/half]    [mMaxNumActIn, inChannels]
    *        1: numActIn             [int32]         [1]
    *        2: numActOut            [int32]         [1]
-   *        3: index                [int32]         [3, kVol * mMaxNumActIn]
-   *        4: (numBuf, bufSegLen)  [int32]         [1 + kVol]
+   *        3: index                [int32]         [3, kVol * (mMaxNumActIn + 128)]
+   *        4: numIndex             [int32]         [1]
    *    Output:
    *        0: outFeats             [float/half]    [mMaxNumActOut,
    * outChannels]
@@ -155,10 +144,7 @@ class SPConvMMPlugin : public IPluginV2DynamicExt {
                           int32_t nbInputs,
                           const PluginTensorDesc* outputs,
                           int32_t nbOutputs) const NOEXCEPT override {
-    switch (inputs[0].type) {
-    case DataType::kHALF: return inputs[0].dims.d[0] * p.kernelVol * (p.outChannels + p.inChannels) * sizeof(half);
-    default: return inputs[0].dims.d[0] * p.kernelVol * (p.outChannels + p.inChannels) * sizeof(float);
-    }
+    return 0;
   };
   int32_t enqueue(const PluginTensorDesc* inputDesc,
                   const PluginTensorDesc* outputDesc,
@@ -172,74 +158,47 @@ class SPConvMMPlugin : public IPluginV2DynamicExt {
      *        0: inFeats              [float/half]    [mMaxNumActIn, inChannels]
      *        1: numActIn             [int32]         [1]
      *        2: numActOut            [int32]         [1]
-     *        3: index                [int32]         [3, kVol * mMaxNumActIn]
-     *        4: (numBuf, bufSegLen)  [int32]         [1 + kVol]
+     *        3: index                [int32]         [3, kVol * (mMaxNumActIn + 128)]
+     *        4: numIndex             [int32]         [1]
      *    Output:
      *        0: outFeats             [float/half]    [mMaxNumActOut,
      * outChannels]
      * */
-    int32_t numActInIdx, numActOutIdx;
-    cudaMemcpyAsync(&numActInIdx, inputs[1], sizeof(int32_t), cudaMemcpyDeviceToHost, stream);
-    cudaMemcpyAsync(&numActOutIdx, inputs[2], sizeof(int32_t), cudaMemcpyDeviceToHost, stream);
-    cudaMemcpyAsync(numBufAndBufSegLen.data(), inputs[4], numBufAndBufSegLen.size() * sizeof(int32_t),
-                    cudaMemcpyDeviceToHost, stream);
-    cudaStreamSynchronize(stream);
-    int32_t numBuf = numBufAndBufSegLen[0];
-    Ref1D<int32_t> bufferKernelNumHost(&numBufAndBufSegLen[1], {p.kernelVol});
-    auto* indexPtr = reinterpret_cast<int32_t*>(const_cast<void*>(inputs[3]));
+    auto* indexPtr = reinterpret_cast<const int32_t*>(inputs[3]);
+    auto* numIndexPtr = reinterpret_cast<const int32_t*>(inputs[4]);
+    int numIndicesMax = inputDesc[3].dims.d[1];
+    auto gatherInPtr = indexPtr;
+    auto scatterOutPtr = indexPtr + numIndicesMax;
+    auto kernelOffsetPtr = indexPtr + 2 * numIndicesMax;
 
-    auto indexBufferFromInPtr = indexPtr;
-    auto indexBufferToOutPtr = indexPtr + inputDesc[3].dims.d[1];
-    auto indexBufferOffsetPtr = indexPtr + 2 * inputDesc[3].dims.d[1];
-
-    int32_t numActInData = numActInIdx, numActOutData = numActOutIdx;
     if (p.inverse) {
-      indexBufferFromInPtr = indexBufferToOutPtr;
-      indexBufferToOutPtr = indexPtr;
-      numActInData = numActOutIdx;
-      numActOutData = numActInIdx;
+      gatherInPtr = scatterOutPtr;
+      scatterOutPtr = indexPtr;
     }
 
-    Ref1D<int32_t> bufferFromIn(indexBufferFromInPtr, {numBuf});
-    Ref1D<int32_t> bufferToOut(indexBufferToOutPtr, {numBuf});
-    Ref1D<int32_t> bufferOffset(indexBufferOffsetPtr, {numBuf});
-    auto gpu = utils::GPU(stream, cublas);
+    Ref1D<const int32_t> gatherIn(gatherInPtr, {numIndicesMax});
+    Ref1D<const int32_t> scatterOut(scatterOutPtr, {numIndicesMax});
+    Ref1D<const int32_t> kernelOffset(kernelOffsetPtr, {numIndicesMax});
+
+    auto gpu = utils::GPU(stream);
     if (inputDesc[0].type == DataType::kHALF) {
-      using dtype = half;
-      Ref2D<dtype> bufMMIn(reinterpret_cast<dtype*>(workspace), {numActInIdx * p.kernelVol, p.inChannels});
-      Ref2D<dtype> bufMMOut(reinterpret_cast<dtype*>(workspace) + bufMMIn.numel(),
-                            {numActInIdx * p.kernelVol, p.outChannels});
-      Ref2D<dtype> outFeats(reinterpret_cast<dtype*>(outputs[0]), {numActOutData, p.outChannels});
-      Ref2D<dtype> inFeats(reinterpret_cast<dtype*>(const_cast<void*>(inputs[0])), {numActInData, p.inChannels});
-      Ref3D<dtype> filters(reinterpret_cast<dtype*>(wRt->data()), {p.kernelVol, p.inChannels, p.outChannels});
-      dtype* biasPtr = nullptr;
-      if (p.withBias) biasPtr = reinterpret_cast<dtype*>(bRt->data());
-      Ref1D<dtype> bias(biasPtr, {p.outChannels});
-      if (p.subM) {
-        spconv::func::indexSubM<4, dtype, int32_t>(gpu, bufMMIn, bufMMOut, outFeats, inFeats, filters, bias,
-                                                   bufferFromIn, bufferToOut, bufferOffset, bufferKernelNumHost);
-      } else {
-        spconv::func::indexConv<4, dtype, int32_t>(gpu, bufMMIn, bufMMOut, outFeats, inFeats, filters, bias,
-                                                   bufferFromIn, bufferToOut, bufferOffset, bufferKernelNumHost);
-      }
-    } else {
-      using dtype = float;
-      Ref2D<dtype> bufMMIn(reinterpret_cast<dtype*>(workspace), {numActInIdx * p.kernelVol, p.inChannels});
-      Ref2D<dtype> bufMMOut(reinterpret_cast<dtype*>(workspace) + bufMMIn.numel(),
-                            {numActInIdx * p.kernelVol, p.outChannels});
-      Ref2D<dtype> outFeats(reinterpret_cast<dtype*>(outputs[0]), {numActOutData, p.outChannels});
-      Ref2D<dtype> inFeats(reinterpret_cast<dtype*>(const_cast<void*>(inputs[0])), {numActInData, p.inChannels});
-      Ref3D<dtype> filters(reinterpret_cast<dtype*>(wRt->data()), {p.kernelVol, p.inChannels, p.outChannels});
-      dtype* biasPtr = nullptr;
-      if (p.withBias) biasPtr = reinterpret_cast<dtype*>(bRt->data());
-      Ref1D<dtype> bias(biasPtr, {p.outChannels});
-      if (p.subM) {
-        spconv::func::indexSubM<4, dtype, int32_t>(gpu, bufMMIn, bufMMOut, outFeats, inFeats, filters, bias,
-                                                   bufferFromIn, bufferToOut, bufferOffset, bufferKernelNumHost);
-      } else {
-        spconv::func::indexConv<4, dtype, int32_t>(gpu, bufMMIn, bufMMOut, outFeats, inFeats, filters, bias,
-                                                   bufferFromIn, bufferToOut, bufferOffset, bufferKernelNumHost);
-      }
+      using dtype = cutlass::half_t;
+      Ref2D<dtype> outFeats = fromTensorRT<2, dtype>(outputs[0], outputDesc[0]);
+      Ref2D<const dtype> inFeats = fromTensorRT<2, const dtype>(inputs[0], inputDesc[0]);
+      Ref3D<const dtype> filters(reinterpret_cast<const dtype*>(wRt->data()),
+                                 {p.kernelVol, p.inChannels, p.outChannels});
+      Ref1D<const dtype> bias(p.withBias ? reinterpret_cast<dtype*>(bRt->data()) : nullptr, {p.outChannels});
+      if (inFeats.size(1) % 8 == 0 && filters.size(1) % 8 == 0) {
+        if (inFeats.size(1) <= 16) {
+          spconv::func::indexedSpConv<MMOp1>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
+                                             numIndexPtr);
+        } else {
+          spconv::func::indexedSpConv<MMOp2>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
+                                             numIndexPtr);
+        }
+      } else
+        spconv::func::indexedSpConv<MMOp3>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
+                                           numIndexPtr);
     }
     return 0;
   }

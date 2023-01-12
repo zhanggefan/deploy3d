@@ -209,9 +209,9 @@ template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
     cudaStreamSynchronize(stream);
     Ref2D<int32_t> inCoors(reinterpret_cast<int32_t*>(const_cast<void*>(inputs[0])), {numActIn, NDim + 1});
     auto index = fromTensorRT<2, int32_t>(outputs[0], outputDesc[0]);
-    auto GatherIn = index.template subview(0);
-    auto ScatterOut = index.template subview(1);
-    auto KernelOffset = index.template subview(2);
+    auto gatherIn = index.template subview(0);
+    auto scatterOut = index.template subview(1);
+    auto kernelOffset = index.template subview(2);
     auto numIndex = reinterpret_cast<int32_t*>(outputs[1]);
     typename Size<NDim + 1>::index_vec_t outSpatialShapeVec;
     decltype(&inputDesc[2].dims.d[0]) outSpatialShapeDims;
@@ -230,7 +230,7 @@ template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
       ssize_t workspaceSize =
           spconv::func::createSparseSubMIndexMalloc<NDim, int32_t>(utils::GPU(), numActIn, p.kernelSize);
       Ref1D<uint8_t> workingStorage(reinterpret_cast<uint8_t*>(workspace), {workspaceSize});
-      spconv::func::createSparseSubMIndex<NDim, int32_t>(gpu, workingStorage, GatherIn, ScatterOut, KernelOffset,
+      spconv::func::createSparseSubMIndex<NDim, int32_t>(gpu, workingStorage, gatherIn, scatterOut, kernelOffset,
                                                          numIndex, inCoors, p.kernelSize, p.stride, p.padding,
                                                          p.dilation, outSpatialShape);
       return 0;
@@ -241,7 +241,7 @@ template <size_t NDim> class SPConvIdxPlugin : public IPluginV2DynamicExt {
           spconv::func::createSparseConvIndexMalloc<NDim, int32_t>(utils::GPU(), numActIn, p.kernelSize);
       Ref1D<uint8_t> workingStorage(reinterpret_cast<uint8_t*>(workspace), {workspaceSize});
       spconv::func::createSparseConvIndex<NDim, int32_t>(
-          gpu, workingStorage, GatherIn, ScatterOut, KernelOffset, outCoors, numIndex, numActOut, inCoors, p.kernelSize,
+          gpu, workingStorage, gatherIn, scatterOut, kernelOffset, outCoors, numIndex, numActOut, inCoors, p.kernelSize,
           p.stride, p.padding, p.dilation, outSpatialShape, p.transpose, p.maxNumActOut);
       return 0;
     }
