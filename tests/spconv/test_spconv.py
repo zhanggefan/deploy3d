@@ -30,11 +30,6 @@ def _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), dil
     in_coors = torch.empty([max_num_act_in, 4], dtype=torch.int32, device='cuda')
     in_coors_ = _make_unique_coors(num_act_in[0].item(), in_spatial_shape.shape).cuda()
     in_coors[:num_act_in[0].item()] = in_coors_
-    in_feats = torch.randn((max_num_act_in, num_feats_in), dtype=torch.float32, device='cuda')
-
-    kernel_vol = torch.tensor(ksize).prod()
-    weight = torch.randn((kernel_vol, num_feats_in, num_feats_out), dtype=torch.float32, device='cuda')
-    bias = torch.randn((num_feats_out,), dtype=torch.float32, device='cuda')
 
     if subm:
         max_num_act_out = max_num_act_in
@@ -84,22 +79,6 @@ def _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), dil
         gt_present = torch.zeros([gt_out_coors.shape[0]], dtype=torch.bool).cuda()
         gt_present[idx_in_gt] = True
 
-    out_feats = TRTPluginModule.forward(
-        SPConvMM,
-        input_tensors=(in_feats,
-                       num_act_in,
-                       num_act_out,
-                       index,
-                       num_index),
-        configs=(ksize,  # kernel_size
-                 num_feats_in,  # stride
-                 num_feats_out,  # padding
-                 max_num_act_out,
-                 subm,
-                 inverse,
-                 weight.cpu().numpy(),
-                 bias.cpu().numpy()))  # transpose
-
     assert num_index % 128 == 0
     gather_in, scatter_out, kernel_offset = index
     kernel_segments = torch.cat([torch.nonzero(kernel_offset == _)[[0, -1]] for _ in range(27)], 1).T
@@ -144,8 +123,37 @@ def _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), dil
         assert (gather_in_kernel_i == gt_gather_in_kernel_i).all()
         assert (scatter_out_kernel_i == gt_scatter_out_kernel_i).all()
 
+    if inverse:
+        num_act_in, num_act_out = num_act_out, num_act_in
+        max_num_act_in, max_num_act_out = max_num_act_out, max_num_act_in
+
+    in_feats = torch.randn((max_num_act_in, num_feats_in), dtype=torch.float32, device='cuda')
+
+    kernel_vol = torch.tensor(ksize).prod()
+    weight = torch.randn((kernel_vol, num_feats_in, num_feats_out), dtype=torch.float32, device='cuda')
+    bias = torch.randn((num_feats_out,), dtype=torch.float32, device='cuda')
+
+    out_feats = TRTPluginModule.forward(
+        SPConvMM,
+        input_tensors=(in_feats,
+                       num_act_in,
+                       num_act_out,
+                       index,
+                       num_index),
+        configs=(ksize,  # kernel_size
+                 num_feats_in,  # stride
+                 num_feats_out,  # padding
+                 max_num_act_out,
+                 subm,
+                 inverse,
+                 weight.cpu().numpy(),
+                 bias.cpu().numpy()))  # transpose
+
     ref_out_feats = torch.zeros((max_num_act_out, num_feats_out), dtype=torch.float32, device='cuda')
     ref_out_feats[:] = bias[None, :]
+
+    if inverse:
+        gather_in, scatter_out = scatter_out, gather_in
     for k in range(kernel_vol):
         kernel_v = kernel_offset == k
         gathered_feats_k = in_feats[gather_in[kernel_v].long()]
@@ -156,21 +164,37 @@ def _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), dil
 
 def test_spconv_index():
     _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=20000,
-                       max_num_act_out=50000, subm=False)
+                       max_num_act_out=50000, subm=False, inverse=False)
     _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=40000,
-                       max_num_act_out=50000, subm=False)
+                       max_num_act_out=50000, subm=False, inverse=False)
     _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=20000,
-                       max_num_act_out=5000, subm=False)
+                       max_num_act_out=5000, subm=False, inverse=False)
     _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=40000,
-                       max_num_act_out=5000, subm=False)
+                       max_num_act_out=5000, subm=False, inverse=False)
     _test_spconv_index(ksize=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=20000,
-                       max_num_act_out=50000, subm=True)
+                       max_num_act_out=50000, subm=True, inverse=False)
     _test_spconv_index(ksize=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=40000,
-                       max_num_act_out=50000, subm=True)
+                       max_num_act_out=50000, subm=True, inverse=False)
     _test_spconv_index(ksize=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=20000,
-                       max_num_act_out=5000, subm=True)
+                       max_num_act_out=5000, subm=True, inverse=False)
     _test_spconv_index(ksize=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=40000,
-                       max_num_act_out=5000, subm=True)
+                       max_num_act_out=5000, subm=True, inverse=False)
+    _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=20000,
+                       max_num_act_out=50000, subm=False, inverse=True)
+    _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=40000,
+                       max_num_act_out=50000, subm=False, inverse=True)
+    _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=20000,
+                       max_num_act_out=5000, subm=False, inverse=True)
+    _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=40000,
+                       max_num_act_out=5000, subm=False, inverse=True)
+    _test_spconv_index(ksize=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=20000,
+                       max_num_act_out=50000, subm=True, inverse=True)
+    _test_spconv_index(ksize=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=40000,
+                       max_num_act_out=50000, subm=True, inverse=True)
+    _test_spconv_index(ksize=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=20000,
+                       max_num_act_out=5000, subm=True, inverse=True)
+    _test_spconv_index(ksize=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), num_act_in=20000, max_num_act_in=40000,
+                       max_num_act_out=5000, subm=True, inverse=True)
 
 
 if __name__ == '__main__':
