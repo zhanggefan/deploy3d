@@ -11,8 +11,8 @@ class SPConvMM(torch.autograd.Function):
      *        0: inFeats              [float/half]    [mMaxNumActIn, inChannels]
      *        1: numActIn             [int32]         [1]
      *        2: numActOut            [int32]         [1]
-     *        3: index                [int32]         [3, kVol * mMaxNumActIn]
-     *        4: (numBuf, bufSegLen)  [int32]         [1 + kVol]
+     *        3: index                [int32]         [3, kVol * (mMaxNumActIn + 128)]
+     *        4: numIndex             [int32]         [1]
      *    Output:
      *        0: outFeats             [float/half]    [mMaxNumActOut, outChannels]
      * */
@@ -24,7 +24,7 @@ class SPConvMM(torch.autograd.Function):
                 num_act_in: torch.Tensor,
                 num_act_out: torch.Tensor,
                 index: torch.Tensor,
-                index_buf_len: torch.Tensor,
+                num_index: torch.Tensor,
                 kernel_size: Union[tuple, list],
                 in_channels: int,
                 out_channels: int,
@@ -42,7 +42,7 @@ class SPConvMM(torch.autograd.Function):
                  num_act_in: torch._C.Value,
                  num_act_out: torch._C.Value,
                  index: torch._C.Value,
-                 index_buf_len: torch._C.Value,
+                 num_index: torch._C.Value,
                  kernel_size: Union[tuple, list],
                  in_channels: int,
                  out_channels: int,
@@ -62,7 +62,7 @@ class SPConvMM(torch.autograd.Function):
         if bias is not None:
             data += bias.tobytes()
         return g.op('TRT_PluginV2',
-                    in_feats, num_act_in, num_act_out, index, index_buf_len,
+                    in_feats, num_act_in, num_act_out, index, num_index,
                     name_s=b"SPConvMM", data_s=data, namespace_s=b'', version_s=b'2.0', outputs=1)
 
 

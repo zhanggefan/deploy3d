@@ -23,12 +23,21 @@ def _make_unique_coors(num, shape):
 
 def _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), dilation=(1, 1, 1), out_padding=(0, 0, 0),
                        num_act_in=20000, in_spatial_shape=[2, 0, 120, 90, 8], max_num_act_in=40000,
-                       max_num_act_out=50000, subm=False, transpose=False):
-    in_spatial_shape = torch.empty(in_spatial_shape, dtype=torch.int32)
-    num_act_in = torch.tensor([num_act_in], dtype=torch.int32)
+                       max_num_act_out=50000, num_feats_in=16, num_feats_out=32, subm=False, inverse=False,
+                       transpose=False):
+    in_spatial_shape = torch.empty(in_spatial_shape, dtype=torch.int32, device='cuda')
+    num_act_in = torch.tensor([num_act_in], dtype=torch.int32, device='cuda')
     in_coors = torch.empty([max_num_act_in, 4], dtype=torch.int32, device='cuda')
     in_coors_ = _make_unique_coors(num_act_in[0].item(), in_spatial_shape.shape).cuda()
     in_coors[:num_act_in[0].item()] = in_coors_
+    in_feats = torch.randn((max_num_act_in, num_feats_in), dtype=torch.float32, device='cuda')
+
+    kernel_vol = torch.tensor(ksize).prod()
+    weight = torch.randn((kernel_vol, num_feats_in, num_feats_out), dtype=torch.float32, device='cuda')
+    bias = torch.randn((num_feats_out,), dtype=torch.float32, device='cuda')
+
+    if subm:
+        max_num_act_out = max_num_act_in
 
     (gt_out_coors, gt_index, gt_index_buf_len) = get_indice_pairs(
         indices=in_coors_,
@@ -59,6 +68,7 @@ def _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), dil
 
     if subm:
         (index, num_index) = _index
+        num_act_out = num_act_in
     else:
         (index, num_index, out_coors, num_act_out, out_spatial_shape) = _index
 
@@ -73,6 +83,22 @@ def _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), dil
         assert len(idx_in_gt) == min(len(gt_out_coors), max_num_act_out)
         gt_present = torch.zeros([gt_out_coors.shape[0]], dtype=torch.bool).cuda()
         gt_present[idx_in_gt] = True
+
+    out_feats = TRTPluginModule.forward(
+        SPConvMM,
+        input_tensors=(in_feats,
+                       num_act_in,
+                       num_act_out,
+                       index,
+                       num_index),
+        configs=(ksize,  # kernel_size
+                 num_feats_in,  # stride
+                 num_feats_out,  # padding
+                 max_num_act_out,
+                 subm,
+                 inverse,
+                 weight.cpu().numpy(),
+                 bias.cpu().numpy()))  # transpose
 
     assert num_index % 128 == 0
     gather_in, scatter_out, kernel_offset = index
@@ -117,6 +143,15 @@ def _test_spconv_index(ksize=(3, 3, 3), stride=(2, 2, 1), padding=(1, 1, 1), dil
 
         assert (gather_in_kernel_i == gt_gather_in_kernel_i).all()
         assert (scatter_out_kernel_i == gt_scatter_out_kernel_i).all()
+
+    ref_out_feats = torch.zeros((max_num_act_out, num_feats_out), dtype=torch.float32, device='cuda')
+    ref_out_feats[:] = bias[None, :]
+    for k in range(kernel_vol):
+        kernel_v = kernel_offset == k
+        gathered_feats_k = in_feats[gather_in[kernel_v].long()]
+        scattering_feats_k = gathered_feats_k.matmul(weight[k])
+        ref_out_feats[scatter_out[kernel_v].long()] += scattering_feats_k
+    assert torch.allclose(out_feats[:num_act_out], ref_out_feats[:num_act_out], rtol=1e-2, atol=1e-1)
 
 
 def test_spconv_index():
