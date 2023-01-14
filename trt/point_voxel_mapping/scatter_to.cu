@@ -49,45 +49,33 @@ __global__ void maxReduceFeats(Ref2D<T> outFeats,  // [maxNumActOut, P]
 {
   auto numPtsIn = inFeats.size(0);
   auto numFeats = inFeats.size(1);
-
-  for (size_t ix : KernelLoopX(numPtsIn)) {
-    int voxelIdx = scatterIndex(ix);
-    if (voxelIdx < 0) continue;
-    for (int j = 0; j < numFeats; j++) { atomicMax(&outFeats(voxelIdx, j), inFeats(ix, j)); }
+  for (size_t ix : KernelLoopX(numPtsIn * numFeats)) {
+    int p_id = ix / numFeats;
+    int f_id = ix % numFeats;
+    int v_id = scatterIndex(p_id);
+    if (v_id < 0) continue;
+    atomicMax(&outFeats(v_id, f_id), inFeats[ix]);
   }
 }
 
 template <class T>
-__global__ void addReduceFeats(Ref2D<T> outFeats,  // [maxNumActOut, P]
-                               const Ref2D<const T> inFeats,  // [numPtsIn, P]
-                               const Ref1D<const int32_t> scatterIndex)  // [numPtsIn]
-{
+__global__ void meanReduceFeats(Ref2D<T> outFeats,  // [maxNumActOut, P]
+                                const Ref2D<const T> inFeats,  // [numPtsIn, P]
+                                const Ref1D<const int32_t> scatterIndex,
+                                const Ref1D<const int32_t> scatterCount) {
   auto numPtsIn = inFeats.size(0);
   auto numFeats = inFeats.size(1);
-
-  for (size_t ix : KernelLoopX(numPtsIn)) {
-    int voxelIdx = scatterIndex(ix);
-    if (voxelIdx < 0) continue;
-    for (int j = 0; j < numFeats; j++) { atomicAdd(&outFeats(voxelIdx, j), inFeats(ix, j)); }
-  }
-}
-
-template <class T> __global__ void meanFeats(Ref2D<T> outFeats, const Ref1D<const int32_t> scatterCount) {
-  auto maxNumActOut = scatterCount.size(0);
-  auto numFeats = outFeats.size(1);
-  for (size_t ix : KernelLoopX(maxNumActOut)) {
-    int numVoxelPts = scatterCount(ix);
-    if (numVoxelPts <= 0) continue;
-    for (int j = 0; j < numFeats; j++) { outFeats(ix, j) /= numVoxelPts; }
+  for (size_t ix : KernelLoopX(numPtsIn * numFeats)) {
+    int p_id = ix / numFeats;
+    int f_id = ix % numFeats;
+    int v_id = scatterIndex(p_id);
+    if (v_id < 0) continue;
+    atomicAdd(&outFeats(v_id, f_id), (inFeats[ix] / T(scatterCount[v_id])));
   }
 }
 
 template <class T> __global__ void initFeats(Ref2D<T> outFeats, const T initVal) {
-  auto maxNumActOut = outFeats.size(0);
-  auto numFeats = outFeats.size(1);
-  for (size_t ix : KernelLoopX(maxNumActOut)) {
-    for (int j = 0; j < numFeats; j++) { outFeats(ix, j) = initVal; }
-  }
+  for (size_t ix : KernelLoopX(outFeats.numel())) { outFeats[ix] = initVal; }
 }
 }  // namespace kernel
 
@@ -99,19 +87,18 @@ void scatterTo(const GPU& d,
                const Ref1D<const int32_t> scatterIndex,
                const Ref1D<const int32_t> scatterCount,
                const int8_t reduceType) {
-  auto numPtsIn = inFeats.size(0);
-  auto maxNumActOut = outFeats.size(0);
+  constexpr int taskPerThread = 8;
   if (reduceType == 0)  // max reduce
   {
     kernel::initFeats<T>
-        <<<getBlocks(maxNumActOut), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, std::numeric_limits<T>::lowest());
-    kernel::maxReduceFeats<<<getBlocks(numPtsIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, inFeats,
-                                                                                        scatterIndex);
+        <<<getBlocks((outFeats.numel() + (taskPerThread - 1)) / taskPerThread), CUDA_NUM_THREADS, 0, d.getStream()>>>(
+            outFeats, std::numeric_limits<T>::lowest());
+    kernel::maxReduceFeats<<<getBlocks((inFeats.numel() + (taskPerThread - 1)) / taskPerThread), CUDA_NUM_THREADS, 0,
+                             d.getStream()>>>(outFeats, inFeats, scatterIndex);
   } else {  // mean reduce
-    kernel::initFeats<T><<<getBlocks(maxNumActOut), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, 0);
-    kernel::addReduceFeats<<<getBlocks(numPtsIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, inFeats,
-                                                                                        scatterIndex);
-    kernel::meanFeats<<<getBlocks(maxNumActOut), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, scatterCount);
+    cudaMemsetAsync(outFeats.data(), 0x00, outFeats.numby(), d.getStream());
+    kernel::meanReduceFeats<<<getBlocks((inFeats.numel() + (taskPerThread - 1)) / taskPerThread), CUDA_NUM_THREADS, 0,
+                              d.getStream()>>>(outFeats, inFeats, scatterIndex, scatterCount);
   }
 }
 }  // namespace func

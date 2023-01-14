@@ -34,17 +34,15 @@ __global__ void gatherFeats(RefND<N, T> outFeats,  // [numPtsIn, P]
 {
   auto numPtsIn = outFeats.size(0);
   auto numFeats = outFeats.stride(0);
-  for (size_t ix : KernelLoopX(numPtsIn)) {
-    int voxelIdx = scatterIndex(ix);
-    auto offsetOutFeats = &outFeats[ix * numFeats];
-    if (voxelIdx < 0) {
-      if (fill) {
-        for (int j = 0; j < numFeats; j++) { offsetOutFeats[j] = fillVal; }
-      }
+  for (size_t ix : KernelLoopX(numPtsIn * numFeats)) {
+    int p_id = ix / numFeats;
+    int f_id = ix % numFeats;
+    int v_id = scatterIndex(p_id);
+    if (v_id < 0) {
+      if (fill) { outFeats[ix] = fillVal; }
       continue;
     }
-    auto offsetInFeats = &inFeats[voxelIdx * numFeats];
-    for (int j = 0; j < numFeats; j++) { offsetOutFeats[j] = offsetInFeats[j]; }
+    outFeats[ix] = inFeats[v_id * numFeats + f_id];
   }
 }
 }  // namespace kernel
@@ -57,9 +55,10 @@ void gatherBack(const GPU& d,
                 const Ref1D<const int32_t> scatterIndex,
                 const bool fill = false,
                 const T fillVal = T(0)) {
-  auto numPtsIn = outFeats.size(0);
+  constexpr int taskPerThread = 8;
   kernel::gatherFeats<N, T>
-      <<<getBlocks(numPtsIn), CUDA_NUM_THREADS, 0, d.getStream()>>>(outFeats, inFeats, scatterIndex, fill, fillVal);
+      <<<getBlocks((outFeats.numel() + (taskPerThread - 1)) / taskPerThread), CUDA_NUM_THREADS, 0, d.getStream()>>>(
+          outFeats, inFeats, scatterIndex, fill, fillVal);
 }
 }  // namespace func
 
