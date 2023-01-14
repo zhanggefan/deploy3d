@@ -146,7 +146,6 @@ struct TensorOp {
                                                         typename EpilogueConfig::Padding,
                                                         EpilogueConfig::kFragmentsPerIteration>;
 
- public:
   using Kernel = spconv::kernel::SpConv<ThreadblockMma, Epilogue, ThreadblockSwizzle, SplitKSerial>;
 
  private:
@@ -160,6 +159,9 @@ struct TensorOp {
   TensorOp() : op(){};
   CUTLASS_DEVICE
   void operator()(Params const& params, SharedStorage& shared_storage) { op(params, shared_storage); };
+  template <typename... Args> static inline bool can_implement(Args&&... args) {
+    return Kernel::can_implement(std::forward<Args>(args)...);
+  }
 };
 
 }  // namespace mm

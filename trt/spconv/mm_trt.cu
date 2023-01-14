@@ -188,19 +188,20 @@ class SPConvMMPlugin : public IPluginV2DynamicExt {
       Ref3D<const dtype> filters(reinterpret_cast<const dtype*>(wRt->data()),
                                  {p.kernelVol, p.inChannels, p.outChannels});
       Ref1D<const dtype> bias(p.withBias ? reinterpret_cast<dtype*>(bRt->data()) : nullptr, {p.outChannels});
-      if (inFeats.size(1) % 8 == 0 && filters.size(1) % 8 == 0) {
-        if (inFeats.size(1) <= 16) {
-          spconv::func::indexedSpConv<MMOp1>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
-                                             numIndexPtr);
-        } else {
-          spconv::func::indexedSpConv<MMOp2>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
-                                             numIndexPtr);
-        }
-      } else
-        spconv::func::indexedSpConv<MMOp3>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
-                                           numIndexPtr);
+      if (inFeats.size(1) <= 16) {
+        if (spconv::func::indexedSpConv<MMOp1>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut,
+                                               kernelOffset, numIndexPtr))
+          return 0;
+      } else {
+        if (spconv::func::indexedSpConv<MMOp2>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut,
+                                               kernelOffset, numIndexPtr))
+          return 0;
+      }
+      if (spconv::func::indexedSpConv<MMOp3>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
+                                             numIndexPtr))
+        return 0;
     }
-    return 0;
+    return -1;
   }
 };
 

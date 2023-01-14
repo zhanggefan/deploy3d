@@ -97,6 +97,8 @@ template <typename Mma_, typename Epilogue_, typename ThreadblockSwizzle_, bool 
     };
 
     if (params.indices_num && (*params.indices_num) <= tb_offset_feature.row()) return;
+    int indices_kernel_offset = params.indices_kernel_offset[tb_offset_feature.row()];
+    if (indices_kernel_offset < 0) return;
 
     cutlass::MatrixCoord tb_offset_weight{threadblock_tile_offset.k() * params.gemm_k_size,
                                           threadblock_tile_offset.n() * Mma::Shape::kN};
@@ -111,8 +113,7 @@ template <typename Mma_, typename Epilogue_, typename ThreadblockSwizzle_, bool 
                                          {params.problem_size.m(), problem_size_k}, thread_idx, tb_offset_feature,
                                          params.indices_gather_in);
 
-    auto* weight_ptr =
-        params.ref_weight.data() + params.indices_kernel_offset[tb_offset_feature.row()] * params.kernel_stride;
+    auto* weight_ptr = params.ref_weight.data() + indices_kernel_offset * params.kernel_stride;
 
     typename Mma::IteratorB weight_iter(params.params_weight_iter, weight_ptr,
                                         {problem_size_k, params.problem_size.n()}, thread_idx, tb_offset_weight,
@@ -178,28 +179,27 @@ template <typename Mma_, typename Epilogue_, typename ThreadblockSwizzle_, bool 
   }
 
   CUTLASS_HOST_DEVICE
-  static cutlass::Status can_implement(int in_channels,
-                                       int out_channels,
-                                       typename Mma::IteratorA::TensorRef::Element* in,
-                                       typename Mma::IteratorB::TensorRef::Element* weight,
-                                       typename Epilogue::OutputTileIterator::TensorRef::Element* out,
-                                       int kernel_stride = -1) {
+  static bool can_implement(int in_channels,
+                            int out_channels,
+                            typename Mma::IteratorA::TensorRef::Element* in,
+                            typename Mma::IteratorB::TensorRef::Element* weight,
+                            typename Epilogue::OutputTileIterator::TensorRef::Element* out,
+                            int kernel_stride = -1) {
     static int const kAlignmentA = Mma::IteratorA::AccessType::kElements;
     static int const kAlignmentB = Mma::IteratorB::AccessType::kElements;
     static int const kAlignmentC = Epilogue::OutputTileIterator::kElementsPerAccess;
 
-    if (!cutlass::TensorRef_aligned(Mma::IteratorA::TensorRef(in, in_channels), kAlignmentA))
-      return cutlass::Status::kErrorMisalignedOperand;
+    if (!cutlass::TensorRef_aligned(typename Mma::IteratorA::TensorRef(in, in_channels), kAlignmentA)) return false;
 
-    if (!cutlass::TensorRef_aligned(Mma::IteratorB::TensorRef(weight, out_channels), kAlignmentB))
-      return cutlass::Status::kErrorMisalignedOperand;
+    if (!cutlass::TensorRef_aligned(typename Mma::IteratorB::TensorRef(weight, out_channels), kAlignmentB))
+      return false;
 
-    if (kernel_stride >= 0 && kernel_stride % kAlignmentB != 0) return cutlass::Status::kErrorMisalignedOperand;
+    if (kernel_stride >= 0 && kernel_stride % kAlignmentB != 0) return false;
 
-    if (!cutlass::TensorRef_aligned(Epilogue::OutputTileIterator::TensorRef(out, out_channels), kAlignmentC))
-      return cutlass::Status::kErrorMisalignedOperand;
+    if (!cutlass::TensorRef_aligned(typename Epilogue::OutputTileIterator::TensorRef(out, out_channels), kAlignmentC))
+      return false;
 
-    return cutlass::Status::kSuccess;
+    return true;
   }
 };
 

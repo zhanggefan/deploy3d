@@ -33,7 +33,7 @@ using utils::nd::Ref2D;
 using utils::nd::Ref3D;
 
 template <typename Config>
-void indexedSpConv(const GPU& d,
+bool indexedSpConv(const GPU& d,
                    Ref2D<typename Config::Element>& outFeats,
                    const Ref2D<const typename Config::Element>& inFeats,
                    const Ref3D<const typename Config::Element>& filters,
@@ -43,6 +43,10 @@ void indexedSpConv(const GPU& d,
                    const Ref1D<const int32_t>& kernelOffset,
                    const int32_t* numIndexPtr) {
   using Element = typename Config::Element;
+  if (!Config::can_implement(inFeats.size(1), outFeats.size(1), (Element*)inFeats.data(), (Element*)filters.data(),
+                             (Element*)outFeats.data()))
+    return false;
+
   ssize_t numThreads;
   if (bias.empty()) {
     cudaMemsetAsync(outFeats.data(), 0, outFeats.numel() * sizeof(Element), d.getStream());
@@ -63,6 +67,7 @@ void indexedSpConv(const GPU& d,
     if (result != cudaSuccess) { std::cout << cudaGetErrorString(result) << std::endl; }
   }
   cutlass::Kernel<Config><<<params.grid_size(), params.block_size(), smem_size, d.getStream()>>>(params);
+  return true;
 }
 
 }  // namespace func

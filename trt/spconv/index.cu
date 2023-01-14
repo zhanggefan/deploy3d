@@ -156,20 +156,6 @@ __global__ void outputIndexPadOrganizeKernel(Ref1D<Index> outputIndexPad, const 
 }
 
 template <class Index>
-__global__ void bufferKernelOffsetOrganizeKernel(Ref1D<Index> bufferKernelOffset,
-                                                 const Ref1D<Index> bufferKernelOffsetPad,
-                                                 const Index numActIn,
-                                                 const Index* numValidBuffer,
-                                                 const Ref1D<Index> bufferKernelNumExclusiveSum) {
-  auto numBuf = *numValidBuffer;
-  for (size_t ix : KernelLoopX(numBuf)) {
-    auto segId = bufferKernelOffsetPad[ix];
-    auto segPadding = segId * numActIn - bufferKernelNumExclusiveSum[segId];
-    bufferKernelOffset[ix] = ix + segPadding;
-  }
-}
-
-template <class Index>
 __global__ void hashOutIndexKernel(Ref2D<mkU<Index>> hashOut, const Ref1D<Index> uniqueIndex, const Index numSample) {
   size_t numElem = hashOut.numel();
   for (size_t ix : KernelLoopX(numElem)) {
