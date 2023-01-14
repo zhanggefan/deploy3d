@@ -64,7 +64,7 @@ def _cylinder(max_num_act_out):
                        cylinder_config, in_spatial_shape,),
         configs=[max_num_act_out])
     # correctness of pts_feats
-    valid_pts = scatter_to >= 0
+    valid_pts = (scatter_to >= 0).cpu()
     assert torch.allclose(pts_feats.cpu()[valid_pts], gt_pts_feats[valid_pts], atol=1e-3, rtol=1e-3)
 
     # unique-ness of out_coors
