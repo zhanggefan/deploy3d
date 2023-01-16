@@ -1,9 +1,9 @@
+#include "common/py_interface.h"
 #include "common/refnd.h"
 #include "mm.h"
 #include <NvInfer.h>
 #include <cstring>
 #include <memory>
-#include <string>
 #include <vector>
 
 #define NOEXCEPT noexcept
@@ -30,9 +30,10 @@ struct SPConvMMPluginParam {
   int32_t inChannels;
   int32_t outChannels;
   int32_t maxNumActOut;
-  bool subM;  // deprecated
   bool inverse;
   bool withBias;
+  int16_t profileAlgo;
+  char profileName[128];
 };
 #pragma pack(pop)
 
@@ -44,9 +45,7 @@ class SPConvMMPlugin : public IPluginV2DynamicExt {
   std::shared_ptr<DeviceVector> wRt;
   std::shared_ptr<DeviceVector> bRt;
   const char* mNamespace;
-  using MMOp1 = spconv::mm::TensorOp<cutlass::half_t, 64, 64, 16, 32, 32, 16, cutlass::arch::Sm75>;
-  using MMOp2 = spconv::mm::TensorOp<cutlass::half_t, 64, 64, 32, 16, 32, 32, cutlass::arch::Sm75>;
-  using MMOp3 = spconv::mm::Simt<cutlass::half_t, 32, 64, 8, 16, 32, 8, cutlass::arch::Sm80>;
+  static func::IndexedSpConvDispatcherHalf halfOps;
 
  public:
   /**
@@ -188,18 +187,18 @@ class SPConvMMPlugin : public IPluginV2DynamicExt {
       Ref3D<const dtype> filters(reinterpret_cast<const dtype*>(wRt->data()),
                                  {p.kernelVol, p.inChannels, p.outChannels});
       Ref1D<const dtype> bias(p.withBias ? reinterpret_cast<dtype*>(bRt->data()) : nullptr, {p.outChannels});
-      if (inFeats.size(1) <= 16) {
-        if (spconv::func::indexedSpConv<MMOp1>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut,
-                                               kernelOffset, numIndexPtr))
+      if (p.profileAlgo < 0) {
+        int profileAlgo = deploy3d::interface::ProfilingParams::instance().query(p.profileName, -1);
+        if (halfOps[profileAlgo](gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
+                                 numIndexPtr)) {
           return 0;
+        }
       } else {
-        if (spconv::func::indexedSpConv<MMOp2>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut,
-                                               kernelOffset, numIndexPtr))
+        if (halfOps[p.profileAlgo](gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
+                                   numIndexPtr)) {
           return 0;
+        }
       }
-      if (spconv::func::indexedSpConv<MMOp3>(gpu, outFeats, inFeats, filters, bias, gatherIn, scatterOut, kernelOffset,
-                                             numIndexPtr))
-        return 0;
     }
     return -1;
   }
@@ -238,4 +237,5 @@ class SPConvMMPluginCreator : public IPluginCreator {
 
 REGISTER_TENSORRT_PLUGIN(SPConvMMPluginCreator);
 
+func::IndexedSpConvDispatcherHalf SPConvMMPlugin::halfOps;
 }  // namespace spconv
